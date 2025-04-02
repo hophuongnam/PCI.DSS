@@ -128,8 +128,9 @@ add_finding() {
     local recommendation="$6"
     
     # Update summary count
-    local current_count=$(jq -r ".${severity,,}" "${SUMMARY_FILE}")
-    jq --arg severity "${severity,,}" --argjson count "$((current_count + 1))" '.[$severity] = $count' "${SUMMARY_FILE}" > "${SUMMARY_FILE}.tmp" && mv "${SUMMARY_FILE}.tmp" "${SUMMARY_FILE}"
+    local severity_lower=$(echo "${severity}" | tr '[:upper:]' '[:lower:]')
+    local current_count=$(jq -r ".${severity_lower}" "${SUMMARY_FILE}")
+    jq --arg severity "${severity_lower}" --argjson count "$((current_count + 1))" '.[$severity] = $count' "${SUMMARY_FILE}" > "${SUMMARY_FILE}.tmp" && mv "${SUMMARY_FILE}.tmp" "${SUMMARY_FILE}"
     
     # Create finding JSON
     local finding=$(jq -n \
