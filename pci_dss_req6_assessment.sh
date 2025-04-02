@@ -105,7 +105,7 @@ verify_gcp_access() {
   if ! command_exists jq; then
     log "ERROR" "jq is not installed. Please install it and try again."
     exit 1
-  }
+  fi
   
   # Verify authentication
   if ! gcloud auth list --filter=status:ACTIVE --format="value(account)" > /dev/null 2>&1; then
