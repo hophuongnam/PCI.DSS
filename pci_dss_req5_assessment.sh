@@ -76,7 +76,7 @@ check_dependencies() {
     log_error "gcloud CLI is not installed. Please install Google Cloud SDK to continue."
     echo "Visit https://cloud.google.com/sdk/docs/install for installation instructions."
     exit 1
-  }
+  fi
   
   log_success "All dependencies are installed."
 }
@@ -88,7 +88,7 @@ validate_gcp_auth() {
   if ! gcloud auth list --filter=status:ACTIVE --format="value(account)" &> /dev/null; then
     log_error "Not authenticated to GCP. Please run 'gcloud auth login' first."
     exit 1
-  }
+  fi
   
   # Get the active account
   local active_account
@@ -97,7 +97,7 @@ validate_gcp_auth() {
   if [[ -z "${active_account}" ]]; then
     log_error "No active GCP account found. Please run 'gcloud auth login' first."
     exit 1
-  }
+  fi
   
   log_success "Authenticated to GCP as ${active_account}"
 }
@@ -113,14 +113,14 @@ validate_project() {
     if [[ -z "${PROJECT_ID}" ]]; then
       log_error "No project ID provided and no default project set. Please specify a project ID."
       exit 1
-    }
-  }
+    fi
+  fi
   
   # Verify the project exists and is accessible
   if ! gcloud projects describe "${PROJECT_ID}" &>/dev/null; then
     log_error "Project ${PROJECT_ID} does not exist or you don't have access to it."
     exit 1
-  }
+  fi
   
   log_success "Using project: ${PROJECT_ID}"
 }
@@ -306,7 +306,7 @@ check_req_5_1() {
   else
     findings+=("Security Command Center is not enabled. Consider enabling it to help with security monitoring and process implementation.")
     log_warning "Security Command Center is not enabled. This service can help with security monitoring."
-  }
+  fi
   
   # Check if Cloud Asset Inventory is enabled
   if is_service_enabled "cloudasset.googleapis.com"; then
@@ -315,7 +315,7 @@ check_req_5_1() {
   else
     findings+=("Cloud Asset Inventory is not enabled. Consider enabling it to help track security-relevant assets.")
     log_warning "Cloud Asset Inventory is not enabled. This service can help track security-relevant assets."
-  }
+  fi
   
   # Return findings for the report
   echo "${section_id}|${section_title}|WARNING|${findings[*]}"
@@ -344,12 +344,12 @@ check_req_5_2() {
       else
         findings+=("Security Command Center is monitoring for malware threats. No current malware findings detected.")
         log_success "Security Command Center is monitoring for malware threats. No current findings."
-      }
-    }
+      fi
+    fi
   else
     findings+=("Security Command Center is not enabled. Consider enabling it with Event Threat Detection for malware protection.")
     log_warning "Security Command Center is not enabled. Consider enabling it with Event Threat Detection."
-  }
+  fi
   
   # Check GKE clusters for node auto-upgrade and GKE sandbox
   local gke_clusters="${TEMP_DIR}/gke_clusters.json"
@@ -364,10 +364,10 @@ check_req_5_2() {
       if [[ -n "${non_autoupgrade_clusters}" ]]; then
         findings+=("The following GKE clusters do not have node auto-upgrade enabled, which may leave them vulnerable to malware: ${non_autoupgrade_clusters}")
         log_warning "GKE clusters without node auto-upgrade: ${non_autoupgrade_clusters}"
-      } else {
+      else
         findings+=("All GKE clusters have node auto-upgrade enabled, which helps protect against vulnerabilities.")
         log_success "All GKE clusters have node auto-upgrade enabled."
-      }
+      fi
       
       # Check for GKE Sandbox (gVisor)
       local non_sandbox_clusters
@@ -376,12 +376,12 @@ check_req_5_2() {
       if [[ -n "${non_sandbox_clusters}" ]]; then
         findings+=("Consider enabling GKE Sandbox (gVisor) for additional protection on these clusters: ${non_sandbox_clusters}")
         log_warning "GKE clusters without GKE Sandbox: ${non_sandbox_clusters}"
-      } else {
+      else
         findings+=("GKE Sandbox (gVisor) is enabled on applicable clusters, providing additional protection.")
         log_success "GKE Sandbox is enabled on applicable clusters."
-      }
-    }
-  }
+      fi
+    fi
+  fi
   
   # Check Compute Engine instances for Shielded VM
   local compute_instances="${TEMP_DIR}/compute_instances.json"
@@ -396,12 +396,12 @@ check_req_5_2() {
       if [[ -n "${non_shielded_vms}" ]]; then
         findings+=("The following VMs are not configured as Shielded VMs or have incomplete protection: ${non_shielded_vms}")
         log_warning "VMs without Shielded VM protection: ${non_shielded_vms}"
-      } else {
+      else
         findings+=("All VMs are configured as Shielded VMs with integrity monitoring, which helps protect against rootkits and bootkits.")
         log_success "All VMs are configured as Shielded VMs with integrity monitoring."
-      }
-    }
-  }
+      fi
+    fi
+  fi
   
   # Return findings for the report
   echo "${section_id}|${section_title}|WARNING|${findings[*]}"
@@ -429,12 +429,12 @@ check_req_5_3() {
       if [[ -n "${non_oslogin_vms}" ]]; then
         findings+=("The following VMs do not have OS Login enabled, which may make user management more difficult: ${non_oslogin_vms}")
         log_warning "VMs without OS Login enabled: ${non_oslogin_vms}"
-      } else {
+      else
         findings+=("OS Login is enabled on all VMs, which helps with centralized user management and security.")
         log_success "OS Login is enabled on all VMs."
-      }
-    }
-  }
+      fi
+    fi
+  fi
   
   # Check for logging and monitoring
   local logging_info="${TEMP_DIR}/logging_info.json"
@@ -445,11 +445,11 @@ check_req_5_3() {
     if [[ "${sinks_count}" == "0" ]]; then
       findings+=("No logging sinks configured. Consider setting up logging exports for security analysis.")
       log_warning "No logging sinks configured."
-    } else {
+    else
       findings+=("Logging sinks are configured, which can help with security monitoring and analysis.")
       log_success "Logging sinks are configured."
-    }
-  }
+    fi
+  fi
   
   # Check for monitoring alerts
   local monitoring_info="${TEMP_DIR}/monitoring_info.json"
@@ -460,11 +460,11 @@ check_req_5_3() {
     if [[ "${alerts_count}" == "0" ]]; then
       findings+=("No monitoring alert policies configured. Consider setting up alerts for security events.")
       log_warning "No monitoring alert policies configured."
-    } else {
+    else
       findings+=("Monitoring alert policies are configured, which can help with security incident detection.")
       log_success "Monitoring alert policies are configured."
-    }
-  }
+    fi
+  fi
   
   # Check if Cloud Security Scanner is enabled
   if is_service_enabled "websecurityscanner.googleapis.com"; then
