@@ -283,22 +283,22 @@ finalize_report() {
         <tr>
             <td>Critical</td>
             <td>${CRITICAL_FINDINGS}</td>
-            <td>$(( (CRITICAL_FINDINGS * 100) / (total_findings > 0 ? total_findings : 1) ))%</td>
+            <td>$(( total_findings > 0 ? (CRITICAL_FINDINGS * 100) / total_findings : 0 ))%</td>
         </tr>
         <tr>
             <td>Warning</td>
             <td>${WARNING_FINDINGS}</td>
-            <td>$(( (WARNING_FINDINGS * 100) / (total_findings > 0 ? total_findings : 1) ))%</td>
+            <td>$(( total_findings > 0 ? (WARNING_FINDINGS * 100) / total_findings : 0 ))%</td>
         </tr>
         <tr>
             <td>Pass</td>
             <td>${PASS_FINDINGS}</td>
-            <td>$(( (PASS_FINDINGS * 100) / (total_findings > 0 ? total_findings : 1) ))%</td>
+            <td>$(( total_findings > 0 ? (PASS_FINDINGS * 100) / total_findings : 0 ))%</td>
         </tr>
         <tr>
             <td>Manual Check</td>
             <td>${MANUAL_CHECKS}</td>
-            <td>$(( (MANUAL_CHECKS * 100) / (total_findings > 0 ? total_findings : 1) ))%</td>
+            <td>$(( total_findings > 0 ? (MANUAL_CHECKS * 100) / total_findings : 0 ))%</td>
         </tr>
     </table>
 </div>
