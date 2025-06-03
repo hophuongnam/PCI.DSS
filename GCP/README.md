@@ -99,28 +99,9 @@ gcloud organizations add-iam-policy-binding ORG_ID \
 
 ## 🔧 Script Options
 
-### All Scripts (Requirements 1-8)
+### Standardized Usage (Requirements 1-8)
 
-All scripts now support comprehensive command-line options:
-
-```bash
-Usage: ./check_gcp_pci_requirementX.sh [OPTIONS]
-
-Options:
-  -s, --scope SCOPE          Assessment scope: 'project' or 'organization' (default: project)
-  -p, --project PROJECT_ID   Specific project to assess (overrides current gcloud config)
-  -o, --org ORG_ID          Specific organization ID to assess (required for organization scope)
-  -h, --help                Show help message
-
-Examples:
-  ./script.sh                                    # Assess current project
-  ./script.sh --scope project --project my-proj # Assess specific project
-  ./script.sh --scope organization --org 123456 # Assess entire organization
-```
-
-### Standardized Script Usage (Requirements 1-8)
-
-All scripts now support comprehensive command-line options:
+All scripts support comprehensive command-line options:
 
 ```bash
 Usage: ./check_gcp_pci_requirementX.sh [OPTIONS]
