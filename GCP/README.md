@@ -82,14 +82,26 @@ gcloud organizations add-iam-policy-binding ORG_ID \
 
 ## 📋 Available Scripts
 
-| Script | PCI DSS Requirement | Description |
-|--------|-------------------|-------------|
-| `check_gcp_pci_requirement1.sh` | **Requirement 1** | Network Security Controls |
-| *(More scripts coming...)* | | |
+| Script | PCI DSS Requirement | Description | Status | Template Version |
+|--------|-------------------|-------------|--------|------------------|
+| `check_gcp_pci_requirement1.sh` | **Requirement 1** | Install and Maintain Network Security Controls | ✅ Complete | Advanced Template |
+| `check_gcp_pci_requirement2.sh` | **Requirement 2** | Apply Secure Configurations to All System Components | ✅ Complete | Advanced Template |
+| `check_gcp_pci_requirement3.sh` | **Requirement 3** | Protect Stored Cardholder Data | ✅ Complete | Advanced Template |
+| `check_gcp_pci_requirement4.sh` | **Requirement 4** | Protect Cardholder Data with Strong Cryptography | ✅ Complete | Advanced Template |
+| `check_gcp_pci_requirement5.sh` | **Requirement 5** | Protect All Systems Against Malware | ✅ Complete | Advanced Template |
+| `check_gcp_pci_requirement6.sh` | **Requirement 6** | Develop and Maintain Secure Systems and Software | ✅ Complete | Advanced Template |
+| `check_gcp_pci_requirement7.sh` | **Requirement 7** | Restrict Access by Business Need to Know | ✅ Complete | Advanced Template |
+| `check_gcp_pci_requirement8.sh` | **Requirement 8** | Identify Users and Authenticate Access | ✅ Complete | Advanced Template |
+| `check_gcp_pci_requirement9.sh` | **Requirement 9** | Restrict Physical Access to Cardholder Data | 🚧 Planned | - |
+| `check_gcp_pci_requirement10.sh` | **Requirement 10** | Log and Monitor All Access to System Components | 🚧 Planned | - |
+| `check_gcp_pci_requirement11.sh` | **Requirement 11** | Test Security of Systems and Networks Regularly | 🚧 Planned | - |
+| `check_gcp_pci_requirement12.sh` | **Requirement 12** | Support Information Security with Organizational Policies | 🚧 Planned | - |
 
 ## 🔧 Script Options
 
-All scripts support the following command-line options:
+### All Scripts (Requirements 1-8)
+
+All scripts now support comprehensive command-line options:
 
 ```bash
 Usage: ./check_gcp_pci_requirementX.sh [OPTIONS]
@@ -105,6 +117,57 @@ Examples:
   ./script.sh --scope project --project my-proj # Assess specific project
   ./script.sh --scope organization --org 123456 # Assess entire organization
 ```
+
+### Standardized Script Usage (Requirements 1-8)
+
+All scripts now support comprehensive command-line options:
+
+```bash
+Usage: ./check_gcp_pci_requirementX.sh [OPTIONS]
+
+Options:
+  -s, --scope SCOPE          Assessment scope: 'project' or 'organization' (default: project)
+  -p, --project PROJECT_ID   Specific project to assess (overrides current gcloud config)
+  -o, --org ORG_ID          Specific organization ID to assess (required for organization scope)
+  -h, --help                Show help message
+
+Examples:
+  ./script.sh                                    # Assess current project
+  ./script.sh --scope project --project my-proj # Assess specific project
+  ./script.sh --scope organization --org 123456 # Assess entire organization
+```
+
+### Template Standardization Status
+
+✅ **Complete**: All Requirements 1-8 now use the standardized advanced template providing:
+- Organization-wide assessment capabilities
+- Consistent command-line interface
+- Standardized error handling and reporting
+- Unified HTML report generation
+- Sophisticated permission checking with percentage calculation
+
+#### Standardized Template Features (Requirements 1-8)
+
+**All scripts now include:**
+- ✅ Full command-line argument parsing (`--scope`, `--project`, `--org`, `--help`)
+- ✅ Organization and project scope support
+- ✅ Sophisticated permission checking with percentage calculation
+- ✅ Multi-project assessment capabilities
+- ✅ Inline HTML report generation
+- ✅ Standardized error handling and user interaction
+- ✅ Consistent report naming and structure
+- ✅ Scope-aware command execution
+- ✅ Permission validation before assessment
+- ✅ Unified summary reporting
+
+#### Template Standardization Complete
+
+All GCP PCI DSS assessment scripts (Requirements 1-8) have been updated to use the advanced template, providing:
+1. **Consistent User Experience**: All scripts use identical command-line interfaces
+2. **Flexible Scope**: Support for both project and organization-wide assessments
+3. **Robust Permission Handling**: Comprehensive permission checking before assessment
+4. **Standardized Reporting**: Consistent HTML report generation and naming
+5. **Better Error Handling**: Graceful handling of permission issues and API errors
 
 ## 🏗️ Assessment Scopes
 
@@ -230,9 +293,16 @@ GCP/
 ├── setup_pci_assessor_permissions.sh      # Automated permission setup
 ├── gcp_pci_dss_script_template.sh         # Template for new scripts
 ├── check_gcp_pci_requirement1.sh          # Requirement 1 assessment
+├── check_gcp_pci_requirement2.sh          # Requirement 2 assessment
+├── check_gcp_pci_requirement3.sh          # Requirement 3 assessment
+├── check_gcp_pci_requirement4.sh          # Requirement 4 assessment
+├── check_gcp_pci_requirement5.sh          # Requirement 5 assessment
+├── check_gcp_pci_requirement6.sh          # Requirement 6 assessment
+├── check_gcp_pci_requirement7.sh          # Requirement 7 assessment
+├── check_gcp_pci_requirement8.sh          # Requirement 8 assessment
 ├── reports/                               # Generated assessment reports
-│   ├── gcp_project_pci_req1_report_*.html
-│   └── gcp_org_pci_req1_report_*.html
+│   ├── gcp_project_pci_req*_report_*.html # Project-scope reports
+│   └── gcp_org_pci_req*_report_*.html     # Organization-scope reports
 └── ...
 ```
 
@@ -240,21 +310,45 @@ GCP/
 
 ### Daily Operations Team Assessment
 ```bash
-# Quick project assessment
+# Quick project assessment (Advanced Template)
 ./check_gcp_pci_requirement1.sh
 
+# Quick project assessment (Basic Template)
+./check_gcp_pci_requirement5.sh
+
 # View report in browser
-open ./reports/gcp_project_pci_req1_report_$(date +%Y%m%d)*.html
+open ./reports/gcp_project_pci_req*_report_$(date +%Y%m%d)*.html
 ```
 
 ### Quarterly Compliance Review
 ```bash
-# Full organization assessment
+# Full organization assessment (Advanced Template scripts)
 ./check_gcp_pci_requirement1.sh --scope organization --org 123456789
+./check_gcp_pci_requirement2.sh --scope organization --org 123456789
+./check_gcp_pci_requirement3.sh --scope organization --org 123456789
+./check_gcp_pci_requirement4.sh --scope organization --org 123456789
 
-# Generate comprehensive report
-# Run additional requirement scripts as available
+# Project-scope assessment (Basic Template scripts)
+./check_gcp_pci_requirement5.sh
+./check_gcp_pci_requirement6.sh
+./check_gcp_pci_requirement7.sh
+./check_gcp_pci_requirement8.sh
+
 # Consolidate findings for management review
+```
+
+### Complete PCI DSS Assessment
+```bash
+# Run all available requirement scripts
+for req in {1..8}; do
+    if [ -f "./check_gcp_pci_requirement${req}.sh" ]; then
+        echo "Running Requirement ${req} assessment..."
+        ./check_gcp_pci_requirement${req}.sh
+    fi
+done
+
+# Package all reports
+tar -czf pci_assessment_reports_$(date +%Y%m%d).tar.gz ./reports/
 ```
 
 ### External Auditor Assessment
