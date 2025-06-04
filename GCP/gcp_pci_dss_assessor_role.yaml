@@ -303,8 +303,7 @@ includedPermissions:
 - file.instances.list
 
 # VPC Service Controls - Network Security (PCI Req 1.x)
-- accesscontextmanager.accessLevels.get
-- accesscontextmanager.accessLevels.list
+- accesscontextmanager.policies.list
 - accesscontextmanager.accessPolicies.get
 - accesscontextmanager.accessPolicies.getIamPolicy
 - accesscontextmanager.accessPolicies.list

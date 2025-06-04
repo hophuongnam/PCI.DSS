@@ -49,7 +49,7 @@ gcloud config set project PROJECT_ID
 #### Manual Setup
 ```bash
 # Create custom role at organization level
-gcloud iam roles create pci.dss.v4.assessor \
+gcloud iam roles create pcidss_assessor \
   --organization=ORG_ID \
   --file=gcp_pci_dss_assessor_role.yaml
 
@@ -60,7 +60,7 @@ gcloud iam service-accounts create pci-dss-assessor \
 # Grant organization-level permissions
 gcloud organizations add-iam-policy-binding ORG_ID \
   --member="serviceAccount:pci-dss-assessor@PROJECT_ID.iam.gserviceaccount.com" \
-  --role="organizations/ORG_ID/roles/pci.dss.v4.assessor"
+  --role="organizations/ORG_ID/roles/pcidss_assessor"
 ```
 
 ### 3. Run Assessment Scripts
@@ -207,7 +207,7 @@ The service account needs these roles at the project level:
 For organization-wide assessments, additional permissions:
 - `roles/resourcemanager.organizationViewer` - Organization resource access
 - `roles/browser` - Cross-project visibility
-- Custom role: `organizations/ORG_ID/roles/pci.dss.v4.assessor`
+- Custom role: `organizations/ORG_ID/roles/pcidss_assessor`
 
 ### Detailed Permission Matrix
 See `GCP_PCI_DSS_Permission_Requirements.md` for comprehensive permission mapping by PCI DSS requirement.
@@ -291,11 +291,8 @@ GCP/
 
 ### Daily Operations Team Assessment
 ```bash
-# Quick project assessment (Advanced Template)
+# Quick project assessment
 ./check_gcp_pci_requirement1.sh
-
-# Quick project assessment (Basic Template)
-./check_gcp_pci_requirement5.sh
 
 # View report in browser
 open ./reports/gcp_project_pci_req*_report_$(date +%Y%m%d)*.html
@@ -303,17 +300,15 @@ open ./reports/gcp_project_pci_req*_report_$(date +%Y%m%d)*.html
 
 ### Quarterly Compliance Review
 ```bash
-# Full organization assessment (Advanced Template scripts)
+# Full organization assessment
 ./check_gcp_pci_requirement1.sh --scope organization --org 123456789
 ./check_gcp_pci_requirement2.sh --scope organization --org 123456789
 ./check_gcp_pci_requirement3.sh --scope organization --org 123456789
 ./check_gcp_pci_requirement4.sh --scope organization --org 123456789
-
-# Project-scope assessment (Basic Template scripts)
-./check_gcp_pci_requirement5.sh
-./check_gcp_pci_requirement6.sh
-./check_gcp_pci_requirement7.sh
-./check_gcp_pci_requirement8.sh
+./check_gcp_pci_requirement5.sh --scope organization --org 123456789
+./check_gcp_pci_requirement6.sh --scope organization --org 123456789
+./check_gcp_pci_requirement7.sh --scope organization --org 123456789
+./check_gcp_pci_requirement8.sh --scope organization --org 123456789
 
 # Consolidate findings for management review
 ```

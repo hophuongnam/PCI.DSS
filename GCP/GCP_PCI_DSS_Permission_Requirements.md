@@ -17,7 +17,7 @@ GCP Identity and Access Management (IAM) provides granular access controls neces
 ### Custom Role vs Predefined Roles
 
 **Recommended Approach: Custom Role**
-- **`roles/pci.dss.v4.assessor`** - Custom role with exactly the permissions needed for PCI DSS assessment
+- **`roles/pcidss_assessor`** - Custom role with exactly the permissions needed for PCI DSS assessment
 - Follows least privilege principle (PCI DSS Requirement 7.2.1)
 - Organization-level access for comprehensive assessment
 - Read-only permissions only
@@ -298,7 +298,7 @@ GCP Identity and Access Management (IAM) provides granular access controls neces
 
 ```bash
 # Create the custom role at organization level
-gcloud iam roles create pci.dss.v4.assessor \
+gcloud iam roles create pcidss_assessor \
   --organization=ORGANIZATION_ID \
   --file=gcp_pci_dss_assessor_role.yaml
 ```
@@ -318,7 +318,7 @@ gcloud iam service-accounts create pci-dss-assessor \
 # Grant custom role at organization level
 gcloud organizations add-iam-policy-binding ORGANIZATION_ID \
   --member="serviceAccount:pci-dss-assessor@PROJECT_ID.iam.gserviceaccount.com" \
-  --role="organizations/ORGANIZATION_ID/roles/pci.dss.v4.assessor"
+  --role="organizations/ORGANIZATION_ID/roles/pcidss_assessor"
 
 # Optional: Grant Cloud Shell access
 gcloud projects add-iam-policy-binding PROJECT_ID \

@@ -13,7 +13,7 @@ NC='\033[0m' # No Color
 
 # Default values
 SERVICE_ACCOUNT_NAME="${SERVICE_ACCOUNT_NAME:-pci-dss-assessor}"
-CUSTOM_ROLE_ID="${CUSTOM_ROLE_ID:-pci.dss.v4.assessor}"
+CUSTOM_ROLE_ID="${CUSTOM_ROLE_ID:-pcidss_assessor}"
 PROJECT_ID="${PROJECT_ID:-}"
 ORGANIZATION_ID="${ORGANIZATION_ID:-}"
 REGION="${REGION:-us-central1}"
@@ -482,7 +482,7 @@ show_help() {
     echo "  PROJECT_ID              GCP Project ID (required)"
     echo "  ORGANIZATION_ID         GCP Organization ID (auto-detected if not provided)"
     echo "  SERVICE_ACCOUNT_NAME    Service account name (default: pci-dss-assessor)"
-    echo "  CUSTOM_ROLE_ID          Custom role ID (default: pci.dss.v4.assessor)"
+    echo "  CUSTOM_ROLE_ID          Custom role ID (default: pcidss_assessor)"
     echo "  REGION                  Default region (default: us-central1)"
     echo ""
     echo "Examples:"
