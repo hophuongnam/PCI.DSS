@@ -1,498 +1,329 @@
 #!/usr/bin/env bats
-# Integration Tests for GCP Shared Libraries
-# Tests: Library combinations, end-to-end workflows, cross-library dependencies
 
-# Load test configuration and helpers
-load '../test_config.bash'
-load '../helpers/test_helpers.bash'
-load '../helpers/mock_helpers.bash'
+# Integration tests for GCP shared library interactions
 
-# Setup and teardown for each test
+load ../helpers/test_helpers
+load ../helpers/mock_helpers
+
 setup() {
     setup_test_environment
-    setup_mock_gcp_environment
-    
-    # Source both libraries in proper order
-    source "$COMMON_LIB"
-    source "$PERMISSIONS_LIB"
-    
-    # Initialize both frameworks
-    setup_environment
-    init_permissions_framework
+    load_gcp_common_library
+    load_gcp_permissions_library
 }
 
 teardown() {
-    teardown_test_environment
-    restore_gcp_environment
+    cleanup_test_environment
 }
 
 # =============================================================================
-# Integration Tests: Common + Permissions Library
+# Library Loading and Initialization Integration Tests
 # =============================================================================
 
-@test "integration: complete authentication and permission check workflow" {
-    # Setup
-    export PROJECT_ID="test-project-12345"
-    export SCOPE_TYPE="project"
-    register_required_permissions "compute.instances.list" "iam.roles.list"
+@test "integration: gcp_common loads before gcp_permissions successfully" {
+    # Setup - Verify loading order is correct
+    [ "$GCP_COMMON_LOADED" = "true" ]
+    [ "$GCP_PERMISSIONS_LOADED" = "true" ]
     
-    # Mock complete gcloud environment
-    eval 'gcloud() {
-        case "$*" in
-            *"auth list"*)
-                echo "test-sa@test-project-12345.iam.gserviceaccount.com  ACTIVE"
-                return 0
-                ;;
-            *"config get-value project"*)
-                echo "test-project-12345"
-                return 0
-                ;;
-            *"projects describe"*)
-                echo '{"projectId":"test-project-12345","lifecycleState":"ACTIVE"}'
-                return 0
-                ;;
-            *"iam test-permissions"*"compute.instances.list"*)
-                echo "compute.instances.list"
-                return 0
-                ;;
-            *"iam test-permissions"*"iam.roles.list"*)
-                echo "iam.roles.list"
-                return 0
-                ;;
-            *)
-                return 0
-                ;;
-        esac
-    }'
-    
-    # Execute complete workflow
-    run bash -c '
-        validate_authentication_setup &&
-        detect_and_validate_scope &&
-        check_all_permissions &&
-        get_permission_coverage
-    '
+    # Execute - Test that permissions library recognizes common library
+    run register_required_permissions 1 "test.permission"
     
     # Assert
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "100%" ]] || [[ "$output" =~ "compute.instances.list" ]]
-    
-    # Cleanup
-    unset -f gcloud
+    [[ "$output" =~ "Registered 1 permissions for Requirement 1" ]]
 }
 
-@test "integration: handles authentication failure gracefully across libraries" {
-    # Setup
-    export PROJECT_ID="test-project-12345"
+@test "integration: gcp_permissions fails without gcp_common loaded" {
+    # Setup - Simulate missing gcp_common
+    unset GCP_COMMON_LOADED
     
-    # Mock authentication failure
-    eval 'gcloud() {
-        case "$*" in
-            *"auth list"*)
-                echo "No credentialed accounts."
-                return 1
-                ;;
-            *)
-                return 1
-                ;;
-        esac
-    }'
-    
-    # Execute workflow
-    run bash -c '
-        validate_authentication_setup ||
-        echo "Authentication failed as expected"
-    '
-    
-    # Assert
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "Authentication failed" ]] || [[ "$output" =~ "not authenticated" ]]
-    
-    # Cleanup
-    unset -f gcloud
-}
-
-@test "integration: common library setup enables permissions framework" {
-    # Execute
-    run bash -c '
-        # Common library should set up environment
-        setup_environment
-        
-        # Permissions library should be able to initialize
-        init_permissions_framework
-        
-        # Verify both are working
-        echo "Environment: $SCRIPT_DIR"
-        echo "Permissions: ${#REQUIRED_PERMISSIONS[@]}"
-    '
-    
-    # Assert
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "Environment:" ]]
-    [[ "$output" =~ "Permissions:" ]]
-}
-
-@test "integration: CLI parsing with permissions validation" {
-    # Setup arguments for CLI parsing
-    local args=("-s" "test-project-12345" "-v")
-    
-    # Mock gcloud for validation
-    eval 'gcloud() {
-        case "$*" in
-            *"projects describe"*)
-                echo '{"projectId":"test-project-12345","lifecycleState":"ACTIVE"}'
-                return 0
-                ;;
-            *)
-                return 0
-                ;;
-        esac
-    }'
-    
-    # Execute workflow
-    run bash -c "
-        parse_common_arguments ${args[*]} &&
-        detect_and_validate_scope &&
-        echo \"Scope: \$SCOPE, Verbose: \$VERBOSE\"
-    "
-    
-    # Assert
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "test-project-12345" ]]
-    [[ "$output" =~ "true" ]]
-    
-    # Cleanup
-    unset -f gcloud
-}
-
-@test "integration: error handling propagation between libraries" {
-    # Setup with invalid project
-    export PROJECT_ID="invalid-project-id"
-    export SCOPE_TYPE="project"
-    
-    # Mock gcloud failure
-    eval 'gcloud() {
-        case "$*" in
-            *"projects describe"*)
-                echo "ERROR: Project not found"
-                return 1
-                ;;
-            *)
-                return 1
-                ;;
-        esac
-    }'
-    
-    # Execute workflow
-    run bash -c '
-        detect_and_validate_scope || {
-            print_status "error" "Scope validation failed"
-            exit 1
-        }
-    '
+    # Execute - Try to use permissions library
+    run bash -c "source '../lib/gcp_permissions.sh'"
     
     # Assert
     [ "$status" -eq 1 ]
-    [[ "$output" =~ "error" ]] || [[ "$output" =~ "not found" ]] || [[ "$output" =~ "failed" ]]
+    [[ "$output" =~ "Error: gcp_common.sh must be loaded before gcp_permissions.sh" ]]
+}
+
+@test "integration: both libraries export functions correctly" {
+    # Execute - Check function availability from both libraries
     
-    # Cleanup
-    unset -f gcloud
+    # Common library functions
+    declare -F source_gcp_libraries >/dev/null || fail "source_gcp_libraries not exported"
+    declare -F setup_environment >/dev/null || fail "setup_environment not exported"
+    declare -F parse_common_arguments >/dev/null || fail "parse_common_arguments not exported"
+    declare -F print_status >/dev/null || fail "print_status not exported"
+    
+    # Permissions library functions
+    declare -F register_required_permissions >/dev/null || fail "register_required_permissions not exported"
+    declare -F check_all_permissions >/dev/null || fail "check_all_permissions not exported"
+    declare -F get_permission_coverage >/dev/null || fail "get_permission_coverage not exported"
+    declare -F validate_scope_permissions >/dev/null || fail "validate_scope_permissions not exported"
+    declare -F prompt_continue_limited >/dev/null || fail "prompt_continue_limited not exported"
 }
 
 # =============================================================================
-# Integration Tests: End-to-End Workflows
+# Cross-Library Configuration and State Integration Tests
 # =============================================================================
-
-@test "integration: complete PCI DSS requirement check simulation" {
-    # Setup for PCI requirement check workflow
-    export PROJECT_ID="test-project-12345"
-    export SCOPE_TYPE="project"
-    export OUTPUT_DIR="$TEST_TEMP_DIR/output"
-    export VERBOSE=true
-    
-    # Register permissions needed for a typical PCI requirement
-    register_required_permissions "compute.instances.list" "compute.firewalls.list" "iam.serviceAccounts.list"
-    
-    # Mock complete GCP environment
-    eval 'gcloud() {
-        case "$*" in
-            *"auth list"*)
-                echo "test-sa@test-project-12345.iam.gserviceaccount.com  ACTIVE"
-                return 0
-                ;;
-            *"projects describe"*)
-                echo '{"projectId":"test-project-12345","lifecycleState":"ACTIVE"}'
-                return 0
-                ;;
-            *"iam test-permissions"*)
-                echo "$4"  # Return the permission being tested
-                return 0
-                ;;
-            *"compute instances list"*)
-                echo '{"items":[{"name":"test-instance","status":"RUNNING"}]}'
-                return 0
-                ;;
-            *"compute firewall-rules list"*)
-                echo '{"items":[{"name":"allow-ssh","direction":"INGRESS"}]}'
-                return 0
-                ;;
-            *)
-                return 0
-                ;;
-        esac
-    }'
-    
-    # Execute complete workflow
-    run bash -c '
-        # Step 1: Validate prerequisites and setup
-        validate_prerequisites &&
-        
-        # Step 2: Authenticate and validate scope
-        validate_authentication_setup &&
-        detect_and_validate_scope &&
-        
-        # Step 3: Check permissions
-        check_all_permissions &&
-        
-        # Step 4: Get coverage report
-        coverage=$(get_permission_coverage)
-        echo "Permission coverage: $coverage"
-        
-        # Step 5: Simulate resource checks (if permissions allow)
-        if [[ "$coverage" == *"100"* ]]; then
-            echo "Executing resource checks..."
-            gcloud compute instances list --project=$PROJECT_ID >/dev/null 2>&1 &&
-            gcloud compute firewall-rules list --project=$PROJECT_ID >/dev/null 2>&1 &&
-            echo "Resource checks completed successfully"
-        else
-            echo "Limited permissions - partial checks only"
-        fi
-    '
-    
-    # Assert
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "100%" ]] || [[ "$output" =~ "Permission coverage" ]]
-    [[ "$output" =~ "Resource checks completed" ]] || [[ "$output" =~ "Limited permissions" ]]
-    
-    # Cleanup
-    unset -f gcloud
-}
-
-@test "integration: handles partial permissions gracefully" {
-    # Setup
-    export PROJECT_ID="test-project-12345"
-    register_required_permissions "compute.instances.list" "iam.serviceAccounts.list" "storage.buckets.list"
-    
-    # Mock gcloud with partial permissions
-    eval 'gcloud() {
-        case "$*" in
-            *"auth list"*)
-                echo "user@example.com  ACTIVE"
-                return 0
-                ;;
-            *"projects describe"*)
-                echo '{"projectId":"test-project-12345","lifecycleState":"ACTIVE"}'
-                return 0
-                ;;
-            *"iam test-permissions"*"compute.instances.list"*)
-                echo "compute.instances.list"
-                return 0
-                ;;
-            *"iam test-permissions"*"iam.serviceAccounts.list"*)
-                echo ""  # No permission
-                return 0
-                ;;
-            *"iam test-permissions"*"storage.buckets.list"*)
-                echo "storage.buckets.list"
-                return 0
-                ;;
-            *)
-                return 0
-                ;;
-        esac
-    }'
-    
-    # Execute with limited permissions
-    run bash -c '
-        validate_authentication_setup &&
-        detect_and_validate_scope &&
-        check_all_permissions &&
-        
-        coverage=$(get_permission_coverage)
-        echo "Coverage: $coverage"
-        
-        # Should be able to continue with partial permissions
-        if [[ ! "$coverage" == *"100"* ]]; then
-            echo "Continuing with limited permissions"
-            exit 0
-        fi
-    '
-    
-    # Assert
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "66%" ]] || [[ "$output" =~ "67%" ]]  # 2/3 permissions
-    [[ "$output" =~ "limited permissions" ]]
-    
-    # Cleanup
-    unset -f gcloud
-}
-
-# =============================================================================
-# Integration Tests: Library Dependencies
-# =============================================================================
-
-@test "integration: permissions library requires common library functions" {
-    # Test that permissions library can use common library functions
-    
-    # Execute
-    run bash -c '
-        # Use common library function from permissions context
-        print_status "info" "Testing cross-library function calls"
-        
-        # Use permissions library function that depends on common functions
-        init_permissions_framework &&
-        register_required_permissions "compute.instances.list" &&
-        
-        echo "Cross-library integration successful"
-    '
-    
-    # Assert
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "Testing cross-library function calls" ]]
-    [[ "$output" =~ "Cross-library integration successful" ]]
-}
 
 @test "integration: shared state management between libraries" {
-    # Test that both libraries can access and modify shared state
+    # Setup - Use common library to set environment
+    setup_environment "integration_test.log"
+    parse_common_arguments -s project -p test-project-123 -v
     
-    # Execute
-    run bash -c '
-        # Set state in common library
-        export VERBOSE=true
-        export OUTPUT_DIR="'$TEST_TEMP_DIR'/shared_output"
-        
-        # Initialize permissions framework
-        init_permissions_framework
-        register_required_permissions "compute.instances.list"
-        
-        # Both libraries should see the same state
-        echo "Verbose mode: $VERBOSE"
-        echo "Output dir: $OUTPUT_DIR"
-        echo "Required permissions: ${#REQUIRED_PERMISSIONS[@]}"
-    '
+    # Execute - Use permissions library with shared state
+    register_required_permissions 1 "compute.instances.list"
     
-    # Assert
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "Verbose mode: true" ]]
-    [[ "$output" =~ "Required permissions: 1" ]]
+    # Assert - Both libraries should access shared variables
+    [ "$PROJECT_ID" = "test-project-123" ]
+    [ "$VERBOSE" = "true" ]
+    [ "$SCOPE" = "project" ]
+    [ -n "$LOG_FILE" ]
+    [ ${#REQUIRED_PERMISSIONS[@]} -eq 1 ]
 }
+
+@test "integration: logging works across both libraries" {
+    # Setup
+    setup_environment "cross_library_test.log"
+    
+    # Execute - Generate logs from both libraries
+    print_status "INFO" "Common library test message"
+    register_required_permissions 1 "test.permission"
+    
+    # Assert - Log file should contain entries from both libraries
+    [ -f "$LOG_FILE" ]
+    grep -q "Common library test message" "$LOG_FILE"
+    grep -q "Registered 1 permissions" "$LOG_FILE"
+}
+
+@test "integration: color output consistency across libraries" {
+    # Execute - Test color variables are shared
+    run print_status "PASS" "Test message from common"
+    common_output="$output"
+    
+    # Setup permissions library test
+    export PROJECT_ID="test-project"
+    register_required_permissions 1 "available.permission"
+    mock_gcloud_test_iam_permissions_success "$PROJECT_ID" "available.permission"
+    
+    run check_all_permissions
+    permissions_output="$output"
+    
+    # Assert - Both should use color formatting
+    [[ "$common_output" =~ $'\033' ]]  # Contains ANSI color codes
+    [[ "$permissions_output" =~ $'\033' ]]  # Contains ANSI color codes
+}
+
+# =============================================================================
+# End-to-End Workflow Integration Tests
+# =============================================================================
+
+@test "integration: complete assessment workflow with project scope" {
+    # Setup - Mock successful GCP environment
+    export PROJECT_ID="test-project-123"
+    mock_all_prerequisites_success
+    mock_gcloud_project_describe_success "$PROJECT_ID"
+    mock_gcloud_test_iam_permissions_success "$PROJECT_ID" "compute.instances.list" "iam.roles.list"
+    
+    # Execute - Complete workflow simulation
+    run setup_environment "workflow_test.log"
+    [ "$status" -eq 0 ]
+    
+    run parse_common_arguments -s project -p "$PROJECT_ID" -v
+    [ "$status" -eq 0 ]
+    
+    run validate_prerequisites
+    [ "$status" -eq 0 ]
+    
+    run register_required_permissions 1 "compute.instances.list" "iam.roles.list"
+    [ "$status" -eq 0 ]
+    
+    run validate_scope_permissions
+    [ "$status" -eq 0 ]
+    
+    run check_all_permissions
+    [ "$status" -eq 0 ]
+    
+    # Assert - Workflow completed successfully
+    coverage=$(get_permission_coverage)
+    [ "$coverage" = "100" ]
+}
+
+@test "integration: complete assessment workflow with organization scope" {
+    # Setup - Mock successful GCP environment for organization
+    export ORG_ID="123456789"
+    mock_all_prerequisites_success
+    mock_gcloud_organization_describe_success "$ORG_ID"
+    
+    # Execute - Organization workflow simulation
+    run setup_environment
+    [ "$status" -eq 0 ]
+    
+    run parse_common_arguments -s organization -p "$ORG_ID"
+    [ "$status" -eq 0 ]
+    
+    run validate_prerequisites
+    [ "$status" -eq 0 ]
+    
+    run register_required_permissions 2 "orgpolicy.policies.list"
+    [ "$status" -eq 0 ]
+    
+    run validate_scope_permissions
+    [ "$status" -eq 0 ]
+    
+    # Assert - Organization scope properly handled
+    [ "$SCOPE" = "organization" ]
+    [ "$ORG_ID" = "123456789" ]
+    [ ${#REQUIRED_PERMISSIONS[@]} -eq 1 ]
+}
+
+@test "integration: error handling propagation across libraries" {
+    # Setup - Create error conditions
+    export PROJECT_ID="nonexistent-project"
+    mock_all_prerequisites_success
+    mock_gcloud_project_describe_failure "$PROJECT_ID"
+    
+    # Execute - Test error propagation
+    setup_environment
+    parse_common_arguments -s project -p "$PROJECT_ID"
+    register_required_permissions 1 "test.permission"
+    
+    run validate_scope_permissions
+    
+    # Assert - Error should propagate correctly
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "Cannot access project: nonexistent-project" ]]
+}
+
+@test "integration: limited permissions workflow with user interaction" {
+    # Setup - Mixed permission scenario
+    export PROJECT_ID="test-project"
+    register_required_permissions 1 "available.permission" "missing.permission"
+    mock_gcloud_test_iam_permissions_mixed "$PROJECT_ID" "available.permission"
+    mock_user_input "y"
+    
+    # Execute - Limited permissions workflow
+    run check_all_permissions
+    [ "$status" -eq 1 ]  # Returns 1 because some permissions missing
+    
+    run prompt_continue_limited
+    
+    # Assert - User interaction handled correctly
+    [ "$status" -eq 0 ]  # User chose to continue
+    [[ "$output" =~ "Continuing with limited permissions" ]]
+    
+    coverage=$(get_permission_coverage)
+    [ "$coverage" = "50" ]
+}
+
+# =============================================================================
+# Performance and Resource Management Integration Tests
+# =============================================================================
 
 @test "integration: cleanup functions work across libraries" {
-    # Setup
-    export OUTPUT_DIR="$TEST_TEMP_DIR/cleanup_test"
-    export LOG_FILE="$TEST_TEMP_DIR/test.log"
-    mkdir -p "$OUTPUT_DIR"
-    echo "Test log entry" > "$LOG_FILE"
+    # Setup - Create temporary resources
+    setup_environment "cleanup_test.log"
+    mkdir -p "$WORK_DIR/test_subdir"
+    echo "test content" > "$WORK_DIR/test_file.txt"
     
-    # Execute
-    run bash -c '
-        # Initialize both libraries
-        setup_environment
-        init_permissions_framework
-        
-        # Create some test files
-        echo "test" > "'$OUTPUT_DIR'/test_file.tmp"
-        log_debug "Test debug message"
-        
-        # Cleanup should handle both library artifacts
-        cleanup_temp_files
-        
-        echo "Cleanup completed"
-    '
+    # Execute - Test cleanup
+    run cleanup_temp_files
     
-    # Assert
+    # Assert - Resources cleaned up
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "Cleanup completed" ]]
+    [ ! -f "$WORK_DIR/test_file.txt" ]
+}
+
+@test "integration: concurrent library usage simulation" {
+    # Setup - Simulate multiple requirement checks
+    setup_environment
+    export PROJECT_ID="test-project"
+    mock_gcloud_test_iam_permissions_success "$PROJECT_ID" "perm1" "perm2" "perm3" "perm4"
+    
+    # Execute - Multiple permission registrations
+    register_required_permissions 1 "perm1" "perm2"
+    first_check=$(check_all_permissions && get_permission_coverage)
+    
+    register_required_permissions 2 "perm3" "perm4"
+    second_check=$(check_all_permissions && get_permission_coverage)
+    
+    # Assert - Each check independent but using shared infrastructure
+    [ "$first_check" = "100" ]
+    [ "$second_check" = "100" ]
+}
+
+@test "integration: verbose mode consistency across libraries" {
+    # Setup
+    export VERBOSE=true
+    setup_environment
+    export PROJECT_ID="test-project"
+    mock_gcloud_test_iam_permissions_success "$PROJECT_ID" "test.permission"
+    
+    # Execute - Test verbose output from both libraries
+    run print_status "INFO" "Common library verbose test"
+    common_verbose="$output"
+    
+    run register_required_permissions 1 "test.permission"
+    permissions_verbose="$output"
+    
+    # Assert - Both libraries respect verbose setting
+    [[ "$common_verbose" =~ "Debug:" ]]
+    [[ "$permissions_verbose" =~ "test.permission" ]]
 }
 
 # =============================================================================
-# Integration Tests: Configuration and Environment
+# Configuration and Argument Processing Integration Tests
 # =============================================================================
+
+@test "integration: argument parsing affects permissions behavior" {
+    # Execute - Test different argument combinations
+    
+    # Test 1: Project scope
+    parse_common_arguments -s project -p "proj-123"
+    register_required_permissions 1 "project.permission"
+    run validate_scope_permissions
+    project_result="$status"
+    
+    # Test 2: Organization scope
+    parse_common_arguments -s organization -p "org-456"
+    mock_gcloud_organization_describe_success "org-456"
+    run validate_scope_permissions
+    org_result="$status"
+    
+    # Assert - Scope handling consistent between libraries
+    [ "$project_result" -eq 1 ]  # Will fail without proper mocks
+    [ "$org_result" -eq 0 ]      # Will succeed with mocks
+}
+
+@test "integration: help system works across libraries" {
+    # Execute - Test help display
+    run show_help
+    
+    # Assert - Help includes information relevant to both libraries
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "GCP PCI DSS Assessment Script" ]]
+    [[ "$output" =~ "-s, --scope" ]]
+    [[ "$output" =~ "-p, --project" ]]
+    [[ "$output" =~ "Appropriate GCP permissions" ]]
+}
 
 @test "integration: configuration loading affects both libraries" {
-    # Setup configuration file
-    local config_file="$TEST_TEMP_DIR/integration_config.conf"
-    cat > "$config_file" << 'EOF'
-REQUIREMENT_ID="REQ1"
-VERBOSE=true
-CHECK_PERMISSIONS=true
-REQUIRED_ROLE="roles/viewer"
+    # Setup - Create test configuration
+    local config_dir="$(dirname "$LIB_DIR")/config"
+    mkdir -p "$config_dir"
+    cat > "$config_dir/requirement_1.conf" << 'EOF'
+export TEST_CONFIG_LOADED="true"
+export PROJECT_ID="config-project-123"
 EOF
     
-    # Execute
-    run bash -c '
-        # Load configuration
-        load_requirement_config "'$config_file'"
-        
-        # Both libraries should respect configuration
-        echo "Requirement ID: $REQUIREMENT_ID"
-        echo "Verbose: $VERBOSE"
-        echo "Check permissions: $CHECK_PERMISSIONS"
-        
-        # Initialize with configuration
-        setup_environment
-        init_permissions_framework
-    '
-    
-    # Assert
+    # Execute - Load configuration and test effects
+    run load_requirement_config 1
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "REQ1" ]]
-    [[ "$output" =~ "true" ]]
-}
-
-@test "integration: error recovery and continuation" {
-    # Test that libraries handle errors gracefully and can continue
     
-    # Execute
-    run bash -c '
-        # Simulate error in authentication
-        export PROJECT_ID="test-project"
-        
-        # Mock failing then succeeding gcloud
-        counter=0
-        gcloud() {
-            counter=$((counter + 1))
-            if [ $counter -eq 1 ]; then
-                echo "Network error"
-                return 1
-            else
-                case "$*" in
-                    *"projects describe"*)
-                        echo '"'"'{"projectId":"test-project","lifecycleState":"ACTIVE"}'"'"'
-                        return 0
-                        ;;
-                    *)
-                        return 0
-                        ;;
-                esac
-            fi
-        }
-        
-        # First attempt should fail
-        if ! detect_and_validate_scope 2>/dev/null; then
-            echo "First attempt failed as expected"
-        fi
-        
-        # Second attempt should succeed
-        if detect_and_validate_scope 2>/dev/null; then
-            echo "Second attempt succeeded"
-        fi
-        
-        unset -f gcloud
-    '
+    # Test that permissions library uses loaded configuration
+    register_required_permissions 1 "test.permission"
     
-    # Assert
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "First attempt failed" ]]
-    [[ "$output" =~ "Second attempt succeeded" ]]
+    # Assert - Configuration affects both libraries
+    [ "$TEST_CONFIG_LOADED" = "true" ]
+    [ "$PROJECT_ID" = "config-project-123" ]
+    [ ${#REQUIRED_PERMISSIONS[@]} -eq 1 ]
 }

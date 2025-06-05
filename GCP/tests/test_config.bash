@@ -1,260 +1,334 @@
 #!/bin/bash
-# Test Configuration for GCP PCI DSS Testing Framework
-# This file contains configuration settings and setup for all tests
 
-# Test Framework Version
+# =============================================================================
+# Test Configuration for GCP Shared Library Testing Framework
+# =============================================================================
+
+# Framework Information
 export TEST_FRAMEWORK_VERSION="1.0.0"
+export TEST_FRAMEWORK_NAME="GCP PCI DSS Shared Library Testing Framework"
 
-# Base Directories
-export TEST_BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export PROJECT_ROOT="$(cd "$TEST_BASE_DIR/.." && pwd)"
-export SHARED_LIB_DIR="$PROJECT_ROOT/lib"
-
-# Shared Libraries
-export COMMON_LIB="$SHARED_LIB_DIR/gcp_common.sh"
-export PERMISSIONS_LIB="$SHARED_LIB_DIR/gcp_permissions.sh"
-
-# Test Directories
-export UNIT_TEST_DIR="$TEST_BASE_DIR/unit"
-export INTEGRATION_TEST_DIR="$TEST_BASE_DIR/integration"
-export VALIDATION_TEST_DIR="$TEST_BASE_DIR/validation"
-export MOCK_DIR="$TEST_BASE_DIR/mocks"
-export HELPERS_DIR="$TEST_BASE_DIR/helpers"
-
-# Helper Scripts
-export TEST_HELPERS="$HELPERS_DIR/test_helpers.bash"
-export MOCK_HELPERS="$HELPERS_DIR/mock_helpers.bash"
-export COVERAGE_HELPERS="$HELPERS_DIR/coverage_helpers.bash"
-
+# =============================================================================
 # Coverage Configuration
-export COVERAGE_ENABLED="${COVERAGE_ENABLED:-true}"
-export COVERAGE_DIR="$TEST_BASE_DIR/coverage"
-export COVERAGE_REPORT_DIR="$COVERAGE_DIR/reports"
+# =============================================================================
 
-# Coverage Targets
+# Coverage Targets (percentages)
 export UNIT_TEST_FUNCTION_COVERAGE_TARGET=95
 export UNIT_TEST_LINE_COVERAGE_TARGET=90
 export INTEGRATION_TEST_COVERAGE_TARGET=85
-export VALIDATION_TEST_COVERAGE_TARGET=100
 export OVERALL_COVERAGE_TARGET=90
 
+# Coverage Reporting
+export COVERAGE_TOOL="kcov"
+export COVERAGE_OUTPUT_DIR="coverage"
+export COVERAGE_HTML_REPORT="true"
+export COVERAGE_XML_REPORT="true"
+
+# =============================================================================
 # Test Execution Configuration
-export TEST_PARALLEL="${TEST_PARALLEL:-false}"
-export TEST_VERBOSE="${TEST_VERBOSE:-false}"
-export TEST_TIMEOUT="${TEST_TIMEOUT:-30}"
+# =============================================================================
 
-# Mock Configuration
-export MOCK_ENABLED="${MOCK_ENABLED:-true}"
-export MOCK_RESPONSE_DELAY="${MOCK_RESPONSE_DELAY:-normal}"
-
-# Test Data Configuration
-export TEST_PROJECT_ID="test-project-12345"
-export TEST_PROJECT_NUMBER="123456789012"
-export TEST_SERVICE_ACCOUNT="test-sa@test-project-12345.iam.gserviceaccount.com"
-
-# GCP Original Scripts (for validation testing)
-export ORIGINAL_SCRIPTS_DIR="$PROJECT_ROOT"
-export REQUIREMENT_SCRIPTS=(
-    "check_gcp_pci_requirement1.sh"
-    "check_gcp_pci_requirement2.sh"
-    "check_gcp_pci_requirement3.sh"
-    "check_gcp_pci_requirement4.sh"
-    "check_gcp_pci_requirement5.sh"
-    "check_gcp_pci_requirement6.sh"
-    "check_gcp_pci_requirement7.sh"
-    "check_gcp_pci_requirement8.sh"
-)
+# Test Execution Settings
+export REQUIRED_TEST_PASS_RATE=100
+export MAX_TEST_EXECUTION_TIME=300  # 5 minutes
+export INDIVIDUAL_TEST_TIMEOUT=30   # 30 seconds per test
+export PARALLEL_TEST_EXECUTION="false"  # Set to "true" to enable parallel execution
+export TEST_RETRY_COUNT=0          # Number of retries for failed tests
 
 # Test Output Configuration
-export TEST_OUTPUT_DIR="$TEST_BASE_DIR/output"
-export TEST_REPORTS_DIR="$TEST_BASE_DIR/reports"
-export TEST_LOGS_DIR="$TEST_BASE_DIR/logs"
+export TEST_OUTPUT_FORMAT="tap"    # tap, junit, or pretty
+export TEST_VERBOSE_OUTPUT="false"
+export TEST_SHOW_FAILURES_ONLY="false"
+export TEST_COLORIZED_OUTPUT="true"
 
-# Ensure output directories exist
-mkdir -p "$TEST_OUTPUT_DIR" "$TEST_REPORTS_DIR" "$TEST_LOGS_DIR"
+# =============================================================================
+# Quality Gates Configuration
+# =============================================================================
 
-# Performance Benchmarking Configuration
-export BENCHMARK_ENABLED="${BENCHMARK_ENABLED:-true}"
-export BENCHMARK_ITERATIONS="${BENCHMARK_ITERATIONS:-5}"
-export BENCHMARK_TIMEOUT="${BENCHMARK_TIMEOUT:-60}"
+# Test Quality Requirements
+export MIN_TESTS_PER_FUNCTION=2
+export MIN_ASSERTION_PER_TEST=1
+export REQUIRE_SETUP_TEARDOWN="true"
+export REQUIRE_TEST_DOCUMENTATION="false"
 
-# Test Quality Standards
-export REQUIRED_TEST_PASS_RATE=100  # All tests must pass
-export REQUIRED_FUNCTION_COVERAGE=95
-export REQUIRED_LINE_COVERAGE=90
-export REQUIRED_INTEGRATION_COVERAGE=85
+# Code Quality Gates
+export ENFORCE_FUNCTION_COVERAGE="true"
+export ENFORCE_LINE_COVERAGE="true"
+export ENFORCE_INTEGRATION_COVERAGE="true"
+export FAIL_ON_COVERAGE_BELOW_TARGET="true"
 
-# Load Helper Functions
-load_test_helpers() {
-    local helper_file="$1"
-    if [[ -f "$helper_file" ]]; then
-        source "$helper_file"
-        echo "✓ Loaded $(basename "$helper_file")"
-    else
-        echo "⚠️  Helper file not found: $helper_file"
-        return 1
-    fi
-}
+# =============================================================================
+# Test Environment Configuration
+# =============================================================================
 
-# Global Test Setup Function
-global_test_setup() {
-    echo "=== Global Test Setup ==="
-    
-    # Load all helper functions
-    load_test_helpers "$TEST_HELPERS"
-    load_test_helpers "$MOCK_HELPERS"
-    load_test_helpers "$COVERAGE_HELPERS"
-    
-    # Setup coverage environment
-    if [[ "$COVERAGE_ENABLED" == "true" ]]; then
-        setup_coverage_environment
-    fi
-    
-    # Setup mock environment
-    if [[ "$MOCK_ENABLED" == "true" ]]; then
-        setup_mock_gcp_environment
-        create_test_data_sets
-    fi
-    
-    # Verify shared libraries exist
-    verify_shared_libraries
-    
-    echo "✓ Global test setup completed"
-}
+# Directory Structure
+export TEST_ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export TEST_UNIT_DIR="$TEST_ROOT_DIR/unit"
+export TEST_INTEGRATION_DIR="$TEST_ROOT_DIR/integration"
+export TEST_HELPERS_DIR="$TEST_ROOT_DIR/helpers"
+export TEST_MOCKS_DIR="$TEST_ROOT_DIR/mocks"
+export TEST_RESULTS_DIR="$TEST_ROOT_DIR/results"
+export TEST_TEMP_DIR="/tmp/gcp_tests"
 
-# Global Test Teardown Function
-global_test_teardown() {
-    echo "=== Global Test Teardown ==="
-    
-    # Restore GCP environment
-    if [[ "$MOCK_ENABLED" == "true" ]]; then
-        restore_gcp_environment
-    fi
-    
-    # Cleanup temporary files
-    cleanup_test_environment
-    
-    echo "✓ Global test teardown completed"
-}
+# Library Paths
+export LIB_ROOT_DIR="$(dirname "$TEST_ROOT_DIR")/lib"
+export GCP_COMMON_LIB="$LIB_ROOT_DIR/gcp_common.sh"
+export GCP_PERMISSIONS_LIB="$LIB_ROOT_DIR/gcp_permissions.sh"
 
-# Verify Shared Libraries
-verify_shared_libraries() {
-    echo "Verifying shared libraries..."
+# =============================================================================
+# Mock Configuration
+# =============================================================================
+
+# Mock Settings
+export ENABLE_GCLOUD_MOCKING="true"
+export ENABLE_USER_INPUT_MOCKING="true"
+export ENABLE_FILE_SYSTEM_MOCKING="false"
+export MOCK_GCP_RESPONSES="true"
+
+# Mock Data Configuration
+export MOCK_PROJECT_ID="test-project-123"
+export MOCK_ORG_ID="123456789"
+export MOCK_USER_EMAIL="test-user@example.com"
+export MOCK_SERVICE_ACCOUNT="test-sa@test-project-123.iam.gserviceaccount.com"
+
+# =============================================================================
+# Library Specific Configuration
+# =============================================================================
+
+# GCP Common Library Test Configuration
+export GCP_COMMON_TEST_FUNCTIONS=(
+    "source_gcp_libraries"
+    "setup_environment"
+    "parse_common_arguments"
+    "show_help"
+    "validate_prerequisites"
+    "print_status"
+    "log_debug"
+    "load_requirement_config"
+    "check_script_permissions"
+    "cleanup_temp_files"
+    "get_script_name"
+)
+
+# GCP Permissions Library Test Configuration
+export GCP_PERMISSIONS_TEST_FUNCTIONS=(
+    "register_required_permissions"
+    "check_all_permissions"
+    "get_permission_coverage"
+    "validate_scope_permissions"
+    "prompt_continue_limited"
+)
+
+# Expected Function Counts for Validation
+export EXPECTED_GCP_COMMON_FUNCTION_COUNT=11
+export EXPECTED_GCP_PERMISSIONS_FUNCTION_COUNT=5
+
+# =============================================================================
+# Test Data Configuration
+# =============================================================================
+
+# Sample Test Permissions
+export SAMPLE_COMPUTE_PERMISSIONS=(
+    "compute.instances.list"
+    "compute.instances.get"
+    "compute.zones.list"
+    "compute.machineTypes.list"
+)
+
+export SAMPLE_IAM_PERMISSIONS=(
+    "iam.roles.list"
+    "iam.roles.get"
+    "iam.serviceAccounts.list"
+    "iam.serviceAccounts.get"
+)
+
+export SAMPLE_STORAGE_PERMISSIONS=(
+    "storage.buckets.list"
+    "storage.buckets.get"
+    "storage.objects.list"
+    "storage.objects.get"
+)
+
+# =============================================================================
+# Test Validation Configuration
+# =============================================================================
+
+# Validation Rules
+export VALIDATE_FUNCTION_EXPORTS="true"
+export VALIDATE_LIBRARY_LOADING="true"
+export VALIDATE_ERROR_HANDLING="true"
+export VALIDATE_INPUT_SANITIZATION="true"
+export VALIDATE_OUTPUT_FORMAT="true"
+
+# Test Requirements Validation
+export REQUIRE_UNIT_TESTS="true"
+export REQUIRE_INTEGRATION_TESTS="true"
+export REQUIRE_MOCK_TESTS="true"
+export REQUIRE_ERROR_TESTS="true"
+export REQUIRE_EDGE_CASE_TESTS="true"
+
+# =============================================================================
+# Performance Configuration
+# =============================================================================
+
+# Performance Benchmarks
+export BENCHMARK_FUNCTION_EXECUTION="false"
+export MAX_FUNCTION_EXECUTION_TIME_MS=1000
+export MAX_LIBRARY_LOAD_TIME_MS=500
+export MEMORY_USAGE_TRACKING="false"
+
+# Performance Thresholds
+export PERFORMANCE_REGRESSION_THRESHOLD=10  # 10% performance degradation threshold
+export MEMORY_LEAK_DETECTION="false"
+
+# =============================================================================
+# Reporting Configuration
+# =============================================================================
+
+# Report Generation
+export GENERATE_HTML_REPORT="true"
+export GENERATE_XML_REPORT="true"
+export GENERATE_JSON_REPORT="false"
+export GENERATE_JUNIT_REPORT="true"
+
+# Report Details
+export INCLUDE_COVERAGE_IN_REPORT="true"
+export INCLUDE_PERFORMANCE_METRICS="false"
+export INCLUDE_DETAILED_FAILURES="true"
+export INCLUDE_TEST_EXECUTION_TIMES="true"
+
+# Report Output
+export REPORT_OUTPUT_DIR="$TEST_RESULTS_DIR"
+export REPORT_FILENAME_PREFIX="gcp_shared_lib_test"
+export REPORT_TIMESTAMP_FORMAT="%Y%m%d_%H%M%S"
+
+# =============================================================================
+# CI/CD Integration Configuration
+# =============================================================================
+
+# CI/CD Settings
+export CI_INTEGRATION_ENABLED="true"
+export CI_FAIL_ON_TEST_FAILURE="true"
+export CI_FAIL_ON_COVERAGE_BELOW_TARGET="true"
+export CI_GENERATE_ARTIFACTS="true"
+
+# Artifact Configuration
+export CI_ARTIFACT_RETENTION_DAYS=30
+export CI_COVERAGE_BADGE_GENERATION="false"
+export CI_NOTIFICATION_ON_FAILURE="false"
+
+# =============================================================================
+# Debug and Logging Configuration
+# =============================================================================
+
+# Debug Settings
+export DEBUG_TEST_EXECUTION="false"
+export DEBUG_MOCK_INTERACTIONS="false"
+export DEBUG_LIBRARY_LOADING="false"
+export DEBUG_COVERAGE_COLLECTION="false"
+
+# Logging Configuration
+export TEST_LOG_LEVEL="INFO"  # DEBUG, INFO, WARN, ERROR
+export TEST_LOG_FILE="$TEST_RESULTS_DIR/test_execution.log"
+export TEST_LOG_ROTATION="true"
+export TEST_LOG_MAX_SIZE="10M"
+
+# =============================================================================
+# Security and Isolation Configuration
+# =============================================================================
+
+# Security Settings
+export ISOLATE_TEST_ENVIRONMENT="true"
+export CLEANUP_TEMP_FILES="true"
+export PREVENT_SYSTEM_MODIFICATION="true"
+export SANDBOX_TEST_EXECUTION="false"
+
+# Isolation Configuration
+export USE_TEMPORARY_DIRECTORIES="true"
+export RESET_ENVIRONMENT_VARIABLES="true"
+export MOCK_EXTERNAL_DEPENDENCIES="true"
+
+# =============================================================================
+# Validation Functions
+# =============================================================================
+
+# Validate test configuration
+validate_test_config() {
+    local errors=0
     
-    local all_libraries_ok=true
-    
-    for lib in "$COMMON_LIB" "$PERMISSIONS_LIB"; do
-        if [[ -f "$lib" ]]; then
-            if verify_library_loads "$lib"; then
-                echo "✓ $(basename "$lib") verified"
-            else
-                echo "✗ $(basename "$lib") failed verification"
-                all_libraries_ok=false
-            fi
-        else
-            echo "✗ Library not found: $lib"
-            all_libraries_ok=false
+    # Check required directories
+    for dir in "$TEST_UNIT_DIR" "$TEST_INTEGRATION_DIR" "$TEST_HELPERS_DIR"; do
+        if [[ ! -d "$dir" ]]; then
+            echo "ERROR: Required test directory not found: $dir" >&2
+            ((errors++))
         fi
     done
     
-    if ! $all_libraries_ok; then
-        echo "❌ Shared library verification failed"
+    # Check library files
+    for lib in "$GCP_COMMON_LIB" "$GCP_PERMISSIONS_LIB"; do
+        if [[ ! -f "$lib" ]]; then
+            echo "ERROR: Required library file not found: $lib" >&2
+            ((errors++))
+        fi
+    done
+    
+    # Validate coverage targets
+    if [[ $OVERALL_COVERAGE_TARGET -lt 0 || $OVERALL_COVERAGE_TARGET -gt 100 ]]; then
+        echo "ERROR: Invalid coverage target: $OVERALL_COVERAGE_TARGET" >&2
+        ((errors++))
+    fi
+    
+    # Check for required tools
+    if [[ "$COVERAGE_TOOL" == "kcov" ]] && ! command -v kcov &> /dev/null; then
+        echo "WARNING: Coverage tool 'kcov' not found - coverage reporting disabled" >&2
+    fi
+    
+    if ! command -v bats &> /dev/null; then
+        echo "ERROR: bats testing framework not found" >&2
+        ((errors++))
+    fi
+    
+    return $errors
+}
+
+# Display test configuration summary
+show_test_config_summary() {
+    echo "=== GCP Shared Library Test Configuration Summary ==="
+    echo "Framework: $TEST_FRAMEWORK_NAME v$TEST_FRAMEWORK_VERSION"
+    echo "Coverage Target: $OVERALL_COVERAGE_TARGET%"
+    echo "Test Pass Rate Requirement: $REQUIRED_TEST_PASS_RATE%"
+    echo "Max Execution Time: $MAX_TEST_EXECUTION_TIME seconds"
+    echo "Coverage Tool: $COVERAGE_TOOL"
+    echo "Test Root: $TEST_ROOT_DIR"
+    echo "Library Root: $LIB_ROOT_DIR"
+    echo "Results Directory: $TEST_RESULTS_DIR"
+    echo "=================================================="
+}
+
+# Initialize test environment
+initialize_test_environment() {
+    # Create required directories
+    mkdir -p "$TEST_RESULTS_DIR" "$TEST_TEMP_DIR"
+    
+    # Set up logging
+    if [[ -n "$TEST_LOG_FILE" ]]; then
+        mkdir -p "$(dirname "$TEST_LOG_FILE")"
+        touch "$TEST_LOG_FILE"
+    fi
+    
+    # Validate configuration
+    if ! validate_test_config; then
+        echo "Test configuration validation failed" >&2
         return 1
     fi
     
-    echo "✅ All shared libraries verified"
     return 0
 }
 
-# Test Environment Information
-print_test_environment_info() {
-    echo "=== Test Environment Information ==="
-    echo "Framework Version: $TEST_FRAMEWORK_VERSION"
-    echo "Project Root: $PROJECT_ROOT"
-    echo "Test Base Dir: $TEST_BASE_DIR"
-    echo "Shared Lib Dir: $SHARED_LIB_DIR"
-    echo "Coverage Enabled: $COVERAGE_ENABLED"
-    echo "Mock Enabled: $MOCK_ENABLED"
-    echo "Test Project ID: $TEST_PROJECT_ID"
-    echo "Bats Version: $(bats --version 2>/dev/null || echo 'Not available')"
-    echo "Kcov Available: $(command -v kcov >/dev/null && echo 'Yes' || echo 'No')"
-    echo "=== End Environment Info ==="
-}
+# Export configuration validation functions
+export -f validate_test_config show_test_config_summary initialize_test_environment
 
-# Test Execution Summary
-print_test_execution_summary() {
-    local test_type="$1"
-    local total_tests="$2"
-    local passed_tests="$3"
-    local failed_tests="$4"
-    local coverage_percentage="${5:-N/A}"
-    
-    echo "=== Test Execution Summary: $test_type ==="
-    echo "Total Tests: $total_tests"
-    echo "Passed: $passed_tests"
-    echo "Failed: $failed_tests"
-    echo "Success Rate: $(echo "scale=2; $passed_tests * 100 / $total_tests" | bc -l 2>/dev/null || echo 'N/A')%"
-    echo "Coverage: $coverage_percentage%"
-    
-    if [[ "$failed_tests" -eq 0 ]]; then
-        echo "Status: ✅ ALL TESTS PASSED"
-    else
-        echo "Status: ❌ SOME TESTS FAILED"
-    fi
-    echo "=== End Summary ==="
-}
-
-# Quality Gate Check
-quality_gate_check() {
-    local test_type="$1"
-    local pass_rate="$2"
-    local coverage_rate="$3"
-    
-    local quality_gate_passed=true
-    
-    echo "=== Quality Gate Check: $test_type ==="
-    
-    # Check pass rate
-    if (( $(echo "$pass_rate < $REQUIRED_TEST_PASS_RATE" | bc -l 2>/dev/null || echo 1) )); then
-        echo "❌ Pass rate ($pass_rate%) below required ($REQUIRED_TEST_PASS_RATE%)"
-        quality_gate_passed=false
-    else
-        echo "✅ Pass rate requirement met ($pass_rate%)"
-    fi
-    
-    # Check coverage based on test type
-    local required_coverage
-    case "$test_type" in
-        "unit")
-            required_coverage="$REQUIRED_LINE_COVERAGE"
-            ;;
-        "integration")
-            required_coverage="$REQUIRED_INTEGRATION_COVERAGE"
-            ;;
-        *)
-            required_coverage="$OVERALL_COVERAGE_TARGET"
-            ;;
-    esac
-    
-    if [[ "$coverage_rate" != "N/A" ]] && (( $(echo "$coverage_rate < $required_coverage" | bc -l 2>/dev/null || echo 1) )); then
-        echo "❌ Coverage ($coverage_rate%) below required ($required_coverage%)"
-        quality_gate_passed=false
-    else
-        echo "✅ Coverage requirement met ($coverage_rate%)"
-    fi
-    
-    if $quality_gate_passed; then
-        echo "🎉 Quality gate PASSED"
-        return 0
-    else
-        echo "🚫 Quality gate FAILED"
-        return 1
-    fi
-}
-
-# Export configuration functions
-export -f load_test_helpers global_test_setup global_test_teardown
-export -f verify_shared_libraries print_test_environment_info
-export -f print_test_execution_summary quality_gate_check
-
-echo "✓ Test configuration loaded"
+# Auto-initialize when sourced (but not when executed directly)
+if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
+    initialize_test_environment
+fi

@@ -1,414 +1,334 @@
 #!/usr/bin/env bats
-# Unit Tests for GCP Common Library - CLI Argument Parsing
-# Tests: parse_common_arguments, show_help
 
-# Load test configuration and helpers
-load '../../test_config'
-load '../../helpers/test_helpers'
-load '../../helpers/mock_helpers'
+# Unit tests for gcp_common.sh CLI parsing functions
 
-# Setup and teardown for each test
+load ../../helpers/test_helpers
+load ../../helpers/mock_helpers
+
 setup() {
     setup_test_environment
-    
-    # Source the library under test
-    source "$COMMON_LIB"
-    
-    # Reset global variables before each test
-    SCOPE=""
-    SCOPE_TYPE="project"
-    PROJECT_ID=""
-    ORG_ID=""
-    OUTPUT_DIR=""
-    VERBOSE=false
-    REPORT_ONLY=false
+    load_gcp_common_library
 }
 
 teardown() {
-    teardown_test_environment
+    cleanup_test_environment
 }
 
 # =============================================================================
-# Tests for parse_common_arguments()
+# parse_common_arguments function tests
 # =============================================================================
 
-@test "parse_common_arguments: parses project scope correctly" {
-    # Setup arguments
-    local args=("-s" "test-project-12345")
-    
+@test "parse_common_arguments: handles single project scope" {
     # Execute
-    run parse_common_arguments "${args[@]}"
+    run parse_common_arguments -s project -p test-project-123
     
     # Assert
     [ "$status" -eq 0 ]
-    [ "$SCOPE" = "test-project-12345" ]
+    [ "$SCOPE" = "project" ]
     [ "$SCOPE_TYPE" = "project" ]
+    [ "$PROJECT_ID" = "test-project-123" ]
 }
 
-@test "parse_common_arguments: handles project ID argument" {
-    # Setup arguments
-    local args=("-p" "my-test-project")
-    
+@test "parse_common_arguments: handles organization scope" {
     # Execute
-    run parse_common_arguments "${args[@]}"
+    run parse_common_arguments -s organization -p test-org-456
     
     # Assert
     [ "$status" -eq 0 ]
-    [ "$PROJECT_ID" = "my-test-project" ]
+    [ "$SCOPE" = "organization" ]
+    [ "$SCOPE_TYPE" = "organization" ]
+    [ "$ORG_ID" = "test-org-456" ]
 }
 
-@test "parse_common_arguments: handles organization ID argument" {
-    # Setup arguments
-    local args=("--org" "123456789012")
-    
+@test "parse_common_arguments: handles output directory option" {
     # Execute
-    run parse_common_arguments "${args[@]}"
+    run parse_common_arguments -o /custom/output/dir
     
     # Assert
     [ "$status" -eq 0 ]
-    [ "$ORG_ID" = "123456789012" ]
-    [ "$SCOPE_TYPE" = "organization" ] || [ "$SCOPE" = "123456789012" ]
+    [ "$OUTPUT_DIR" = "/custom/output/dir" ]
 }
 
-@test "parse_common_arguments: handles output directory argument" {
-    # Setup arguments
-    local args=("-o" "$TEST_TEMP_DIR/output")
-    
+@test "parse_common_arguments: handles verbose flag" {
     # Execute
-    run parse_common_arguments "${args[@]}"
-    
-    # Assert
-    [ "$status" -eq 0 ]
-    [ "$OUTPUT_DIR" = "$TEST_TEMP_DIR/output" ]
-}
-
-@test "parse_common_arguments: enables verbose mode" {
-    # Setup arguments
-    local args=("-v")
-    
-    # Execute
-    run parse_common_arguments "${args[@]}"
+    run parse_common_arguments -v
     
     # Assert
     [ "$status" -eq 0 ]
     [ "$VERBOSE" = "true" ]
 }
 
-@test "parse_common_arguments: handles long verbose flag" {
-    # Setup arguments
-    local args=("--verbose")
-    
+@test "parse_common_arguments: handles report-only flag" {
     # Execute
-    run parse_common_arguments "${args[@]}"
-    
-    # Assert
-    [ "$status" -eq 0 ]
-    [ "$VERBOSE" = "true" ]
-}
-
-@test "parse_common_arguments: enables report-only mode" {
-    # Setup arguments
-    local args=("--report-only")
-    
-    # Execute
-    run parse_common_arguments "${args[@]}"
+    run parse_common_arguments -r
     
     # Assert
     [ "$status" -eq 0 ]
     [ "$REPORT_ONLY" = "true" ]
 }
 
-@test "parse_common_arguments: handles help flag" {
-    # Setup arguments
-    local args=("-h")
-    
+@test "parse_common_arguments: handles long format options" {
     # Execute
-    run parse_common_arguments "${args[@]}"
-    
-    # Assert
-    # Help should exit with 0 and display help message
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "Usage" ]] || [[ "$output" =~ "help" ]]
-}
-
-@test "parse_common_arguments: handles long help flag" {
-    # Setup arguments
-    local args=("--help")
-    
-    # Execute
-    run parse_common_arguments "${args[@]}"
+    run parse_common_arguments --scope project --project test-proj --output /tmp/reports --verbose --report-only
     
     # Assert
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "Usage" ]] || [[ "$output" =~ "help" ]]
-}
-
-@test "parse_common_arguments: handles multiple arguments" {
-    # Setup arguments
-    local args=("-s" "test-project" "-o" "$TEST_TEMP_DIR" "-v")
-    
-    # Execute
-    run parse_common_arguments "${args[@]}"
-    
-    # Assert
-    [ "$status" -eq 0 ]
-    [ "$SCOPE" = "test-project" ]
-    [ "$OUTPUT_DIR" = "$TEST_TEMP_DIR" ]
+    [ "$SCOPE" = "project" ]
+    [ "$PROJECT_ID" = "test-proj" ]
+    [ "$OUTPUT_DIR" = "/tmp/reports" ]
     [ "$VERBOSE" = "true" ]
+    [ "$REPORT_ONLY" = "true" ]
 }
 
-@test "parse_common_arguments: handles arguments in different order" {
-    # Setup arguments
-    local args=("-v" "-p" "my-project" "-o" "$TEST_TEMP_DIR")
-    
+@test "parse_common_arguments: rejects invalid scope values" {
     # Execute
-    run parse_common_arguments "${args[@]}"
+    run parse_common_arguments -s invalid_scope
+    
+    # Assert
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "Error: Scope must be 'project' or 'organization'" ]]
+}
+
+@test "parse_common_arguments: rejects empty project ID" {
+    # Execute
+    run parse_common_arguments -p ""
+    
+    # Assert
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "Error: Project/Organization ID cannot be empty" ]]
+}
+
+@test "parse_common_arguments: rejects empty output directory" {
+    # Execute
+    run parse_common_arguments -o ""
+    
+    # Assert
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "Error: Output directory cannot be empty" ]]
+}
+
+@test "parse_common_arguments: rejects unknown options" {
+    # Execute
+    run parse_common_arguments --unknown-option
+    
+    # Assert
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "Error: Unknown option" ]]
+    [[ "$output" =~ "Use -h or --help for usage information" ]]
+}
+
+@test "parse_common_arguments: displays help when -h specified" {
+    # Execute
+    run parse_common_arguments -h
+    
+    # Assert
+    [ "$status" -eq 2 ]
+    [[ "$output" =~ "GCP PCI DSS Assessment Script" ]]
+    [[ "$output" =~ "USAGE:" ]]
+}
+
+@test "parse_common_arguments: displays help when --help specified" {
+    # Execute
+    run parse_common_arguments --help
+    
+    # Assert
+    [ "$status" -eq 2 ]
+    [[ "$output" =~ "GCP PCI DSS Assessment Script" ]]
+    [[ "$output" =~ "OPTIONS:" ]]
+}
+
+@test "parse_common_arguments: sets default scope when none provided" {
+    # Execute
+    parse_common_arguments
+    
+    # Assert
+    [ "$SCOPE" = "project" ]
+}
+
+@test "parse_common_arguments: exports all parsed variables" {
+    # Execute
+    parse_common_arguments -s project -p test-proj -o /tmp -v -r
+    
+    # Assert variables are exported
+    [ -n "$SCOPE" ]
+    [ -n "$SCOPE_TYPE" ]
+    [ -n "$PROJECT_ID" ]
+    [ -n "$OUTPUT_DIR" ]
+    [ -n "$VERBOSE" ]
+    [ -n "$REPORT_ONLY" ]
+}
+
+@test "parse_common_arguments: handles mixed short and long options" {
+    # Execute
+    run parse_common_arguments -s project --project my-project --verbose -o /output
     
     # Assert
     [ "$status" -eq 0 ]
+    [ "$SCOPE" = "project" ]
     [ "$PROJECT_ID" = "my-project" ]
-    [ "$OUTPUT_DIR" = "$TEST_TEMP_DIR" ]
     [ "$VERBOSE" = "true" ]
+    [ "$OUTPUT_DIR" = "/output" ]
 }
 
-@test "parse_common_arguments: validates required arguments" {
-    # Setup arguments with missing required values
-    local args=("-s")  # Missing scope value
-    
+@test "parse_common_arguments: correctly assigns organization ID when org scope" {
     # Execute
-    run parse_common_arguments "${args[@]}"
+    parse_common_arguments -s organization -p 123456789
     
     # Assert
-    # Should fail when required argument value is missing
-    [ "$status" -eq 1 ] || [ "$status" -eq 0 ]  # Depends on implementation
+    [ "$SCOPE_TYPE" = "organization" ]
+    [ "$ORG_ID" = "123456789" ]
+    [ -z "$PROJECT_ID" ]
 }
 
-@test "parse_common_arguments: handles unknown arguments" {
-    # Setup arguments
-    local args=("--unknown-arg" "value")
-    
+@test "parse_common_arguments: correctly assigns project ID when project scope" {
     # Execute
-    run parse_common_arguments "${args[@]}"
+    parse_common_arguments -s project -p my-project-id
     
     # Assert
-    # Should handle unknown arguments gracefully or show error
-    [ "$status" -eq 1 ] || [ "$status" -eq 0 ]
-    [[ "$output" =~ "unknown" ]] || [[ "$output" =~ "error" ]] || [ -z "$output" ]
-}
-
-@test "parse_common_arguments: handles empty argument list" {
-    # Setup arguments
-    local args=()
-    
-    # Execute
-    run parse_common_arguments "${args[@]}"
-    
-    # Assert
-    [ "$status" -eq 0 ]
-    # Variables should remain at default values
-    [ -z "$SCOPE" ]
-    [ "$VERBOSE" = "false" ]
-}
-
-@test "parse_common_arguments: sets scope type for organization" {
-    # Setup arguments
-    local args=("--org" "123456789012")
-    
-    # Execute
-    run parse_common_arguments "${args[@]}"
-    
-    # Assert
-    [ "$status" -eq 0 ]
-    [ "$SCOPE_TYPE" = "organization" ] || [ "$ORG_ID" = "123456789012" ]
-}
-
-@test "parse_common_arguments: validates project ID format" {
-    # Setup arguments with potentially invalid project ID
-    local args=("-p" "INVALID_PROJECT_ID_WITH_UPPERCASE")
-    
-    # Execute
-    run parse_common_arguments "${args[@]}"
-    
-    # Assert
-    # Depending on validation implementation
-    [ "$status" -eq 0 ] || [ "$status" -eq 1 ]
-    if [ "$status" -eq 1 ]; then
-        [[ "$output" =~ "invalid" ]] || [[ "$output" =~ "format" ]]
-    fi
-}
-
-@test "parse_common_arguments: validates organization ID format" {
-    # Setup arguments with potentially invalid org ID
-    local args=("--org" "invalid-org-id")
-    
-    # Execute
-    run parse_common_arguments "${args[@]}"
-    
-    # Assert
-    # Depending on validation implementation
-    [ "$status" -eq 0 ] || [ "$status" -eq 1 ]
-}
-
-@test "parse_common_arguments: creates output directory if specified" {
-    # Setup arguments
-    local test_output_dir="$TEST_TEMP_DIR/new_output_dir"
-    local args=("-o" "$test_output_dir")
-    
-    # Execute
-    run parse_common_arguments "${args[@]}"
-    
-    # Assert
-    [ "$status" -eq 0 ]
-    [ "$OUTPUT_DIR" = "$test_output_dir" ]
-    # Directory creation might happen in parse_common_arguments or later
+    [ "$SCOPE_TYPE" = "project" ]
+    [ "$PROJECT_ID" = "my-project-id" ]
+    [ -z "$ORG_ID" ]
 }
 
 # =============================================================================
-# Tests for show_help()
+# show_help function tests
 # =============================================================================
 
-@test "show_help: displays usage information" {
+@test "show_help: displays complete help information" {
     # Execute
     run show_help
     
     # Assert
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "Usage" ]]
+    [[ "$output" =~ "GCP PCI DSS Assessment Script" ]]
+    [[ "$output" =~ "USAGE:" ]]
+    [[ "$output" =~ "OPTIONS:" ]]
+    [[ "$output" =~ "EXAMPLES:" ]]
+    [[ "$output" =~ "REQUIREMENTS:" ]]
 }
 
-@test "show_help: shows available options" {
+@test "show_help: includes all command line options" {
     # Execute
     run show_help
     
     # Assert
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "-s" ]] || [[ "$output" =~ "scope" ]]
-    [[ "$output" =~ "-p" ]] || [[ "$output" =~ "project" ]]
-    [[ "$output" =~ "-o" ]] || [[ "$output" =~ "output" ]]
-    [[ "$output" =~ "-v" ]] || [[ "$output" =~ "verbose" ]]
+    [[ "$output" =~ "-s, --scope" ]]
+    [[ "$output" =~ "-p, --project" ]]
+    [[ "$output" =~ "-o, --output" ]]
+    [[ "$output" =~ "-r, --report-only" ]]
+    [[ "$output" =~ "-v, --verbose" ]]
+    [[ "$output" =~ "-h, --help" ]]
 }
 
-@test "show_help: shows option descriptions" {
+@test "show_help: includes usage examples" {
     # Execute
     run show_help
     
     # Assert
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "project" ]]
-    [[ "$output" =~ "output" ]]
-    [[ "$output" =~ "verbose" ]]
+    [[ "$output" =~ "Assess a specific project" ]]
+    [[ "$output" =~ "Assess organization with verbose output" ]]
+    [[ "$output" =~ "Use default settings" ]]
 }
 
-@test "show_help: includes examples" {
+@test "show_help: includes requirements section" {
     # Execute
     run show_help
     
     # Assert
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "Example" ]] || [[ "$output" =~ "example" ]]
+    [[ "$output" =~ "gcloud CLI tool" ]]
+    [[ "$output" =~ "jq tool for JSON processing" ]]
+    [[ "$output" =~ "Appropriate GCP permissions" ]]
 }
 
-@test "show_help: shows script name in usage" {
-    # Mock script name
-    BASH_SOURCE=("test_script.sh")
-    
+@test "show_help: includes color formatting" {
     # Execute
     run show_help
     
     # Assert
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "test_script" ]] || [[ "$output" =~ "Usage:" ]]
-}
-
-@test "show_help: displays help for all supported flags" {
-    # Execute
-    run show_help
-    
-    # Assert
-    [ "$status" -eq 0 ]
-    # Check for common flags that should be documented
-    [[ "$output" =~ "-h" ]] || [[ "$output" =~ "help" ]]
-    [[ "$output" =~ "--help" ]] || [[ "$output" =~ "help" ]]
-}
-
-@test "show_help: formats output readably" {
-    # Execute
-    run show_help
-    
-    # Assert
-    [ "$status" -eq 0 ]
-    # Output should be non-empty and formatted
-    [ ${#output} -gt 50 ]  # Should be substantial help text
-    [[ "$output" =~ $'\n' ]]  # Should contain newlines for formatting
+    # Check for ANSI color codes in output
+    [[ "$output" =~ $'\033' ]]
 }
 
 # =============================================================================
-# Tests for load_requirement_config()
+# load_requirement_config function tests  
 # =============================================================================
 
-@test "load_requirement_config: loads configuration file successfully" {
-    # Setup - create a test config file
-    local test_config="$TEST_TEMP_DIR/requirement_config.conf"
-    cat > "$test_config" << 'EOF'
-# Test configuration
-REQUIREMENT_ID="REQ1"
-REQUIREMENT_NAME="Test Requirement"
-CHECK_ENABLED=true
-EOF
+@test "load_requirement_config: loads config file by requirement number" {
+    # Setup
+    local config_dir="$(dirname "$LIB_DIR")/config"
+    mkdir -p "$config_dir"
+    echo 'export TEST_CONFIG_VAR="test_value"' > "$config_dir/requirement_1.conf"
+    
+    # Execute
+    run load_requirement_config 1
+    
+    # Assert
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "Configuration loaded successfully" ]]
+    [ "$TEST_CONFIG_VAR" = "test_value" ]
+}
+
+@test "load_requirement_config: loads config file by direct path" {
+    # Setup
+    local test_config="/tmp/test_config.conf"
+    echo 'export DIRECT_CONFIG_VAR="direct_value"' > "$test_config"
     
     # Execute
     run load_requirement_config "$test_config"
     
     # Assert
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "loaded" ]] || [ -z "$output" ]
+    [[ "$output" =~ "Configuration loaded successfully" ]]
+    [ "$DIRECT_CONFIG_VAR" = "direct_value" ]
 }
 
-@test "load_requirement_config: handles missing config file" {
+@test "load_requirement_config: loads config file by name" {
     # Setup
-    local missing_config="$TEST_TEMP_DIR/nonexistent.conf"
+    local config_dir="$(dirname "$LIB_DIR")/config"
+    mkdir -p "$config_dir"
+    echo 'export NAMED_CONFIG_VAR="named_value"' > "$config_dir/custom.conf"
     
     # Execute
-    run load_requirement_config "$missing_config"
+    run load_requirement_config custom
+    
+    # Assert
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "Configuration loaded successfully" ]]
+    [ "$NAMED_CONFIG_VAR" = "named_value" ]
+}
+
+@test "load_requirement_config: warns when no requirement specified" {
+    # Execute
+    run load_requirement_config
+    
+    # Assert
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "No requirement specified for configuration loading" ]]
+}
+
+@test "load_requirement_config: fails when config file not found" {
+    # Execute
+    run load_requirement_config 999
     
     # Assert
     [ "$status" -eq 1 ]
-    [[ "$output" =~ "not found" ]] || [[ "$output" =~ "missing" ]]
+    [[ "$output" =~ "Configuration file not found" ]]
 }
 
-@test "load_requirement_config: handles malformed config file" {
-    # Setup - create a malformed config file
-    local malformed_config="$TEST_TEMP_DIR/malformed.conf"
-    cat > "$malformed_config" << 'EOF'
-INVALID SYNTAX HERE
-MISSING_EQUALS_SIGN
-=MISSING_VARIABLE_NAME
-EOF
+@test "load_requirement_config: fails when config file has syntax errors" {
+    # Setup
+    local config_dir="$(dirname "$LIB_DIR")/config"
+    mkdir -p "$config_dir"
+    echo 'invalid bash syntax here &@#$' > "$config_dir/requirement_2.conf"
     
     # Execute
-    run load_requirement_config "$malformed_config"
+    run load_requirement_config 2
     
     # Assert
-    # Should handle gracefully or show error
-    [ "$status" -eq 0 ] || [ "$status" -eq 1 ]
-}
-
-@test "load_requirement_config: validates config content" {
-    # Setup - create config with required fields
-    local valid_config="$TEST_TEMP_DIR/valid.conf"
-    cat > "$valid_config" << 'EOF'
-REQUIREMENT_ID="REQ1"
-REQUIREMENT_NAME="Network Security"
-CHECK_ENABLED=true
-SEVERITY="HIGH"
-EOF
-    
-    # Execute
-    load_requirement_config "$valid_config"
-    
-    # Assert - variables should be loaded
-    [ "$REQUIREMENT_ID" = "REQ1" ]
-    [ "$REQUIREMENT_NAME" = "Network Security" ]
-    [ "$CHECK_ENABLED" = "true" ]
-    [ "$SEVERITY" = "HIGH" ]
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "Failed to load configuration file" ]]
 }

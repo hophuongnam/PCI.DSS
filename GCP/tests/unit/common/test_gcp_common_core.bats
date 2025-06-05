@@ -1,64 +1,62 @@
 #!/usr/bin/env bats
-# Unit Tests for GCP Common Library - Core Functions
-# Tests: source_gcp_libraries, setup_environment, validate_prerequisites
 
-# Load test configuration and helpers
-load '../../test_config'
-load '../../helpers/test_helpers'
-load '../../helpers/mock_helpers'
+# Unit tests for gcp_common.sh core functions
 
-# Setup and teardown for each test
+load ../../helpers/test_helpers
+load ../../helpers/mock_helpers
+
 setup() {
     setup_test_environment
-    setup_mock_gcp_environment
-    
-    # Source the library under test
-    source "$COMMON_LIB"
+    load_gcp_common_library
 }
 
 teardown() {
-    teardown_test_environment
-    restore_gcp_environment
+    cleanup_test_environment
 }
 
 # =============================================================================
-# Tests for source_gcp_libraries()
+# source_gcp_libraries function tests
 # =============================================================================
 
 @test "source_gcp_libraries: successfully loads libraries when directory exists" {
     # Setup
-    export LIB_DIR="$SHARED_LIB_DIR"
+    create_mock_lib_directory
     
     # Execute
     run source_gcp_libraries
     
     # Assert
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "Libraries loaded successfully" ]]
+    [[ "$output" =~ "GCP Common Library v1.0 loaded successfully" ]]
+    [ "$GCP_COMMON_LOADED" = "true" ]
 }
 
-@test "source_gcp_libraries: handles missing library directory gracefully" {
+@test "source_gcp_libraries: fails when library directory missing" {
     # Setup
-    export LIB_DIR="/nonexistent/lib/directory"
+    export LIB_DIR="/nonexistent/path"
     
     # Execute
     run source_gcp_libraries
     
     # Assert
     [ "$status" -eq 1 ]
-    [[ "$output" =~ "Library directory not found" ]]
+    [[ "$output" =~ "Error: Library directory not found" ]]
 }
 
-@test "source_gcp_libraries: verifies gcp_common library state" {
+@test "source_gcp_libraries: sets GCP_LIB_PATH correctly" {
+    # Setup
+    create_mock_lib_directory
+    
     # Execute
     source_gcp_libraries
     
     # Assert
-    [ "$GCP_COMMON_LOADED" = "true" ]
+    [ -n "$GCP_LIB_PATH" ]
+    [ -d "$GCP_LIB_PATH" ]
 }
 
 # =============================================================================
-# Tests for setup_environment()
+# setup_environment function tests
 # =============================================================================
 
 @test "setup_environment: initializes global variables correctly" {
@@ -67,381 +65,265 @@ teardown() {
     
     # Assert
     [ "$status" -eq 0 ]
-    [ -n "$SCRIPT_DIR" ]
-    [ -n "$LIB_DIR" ]
-    [ "$passed_checks" -eq 0 ]
-    [ "$failed_checks" -eq 0 ]
-    [ "$total_projects" -eq 0 ]
+    [ -n "$WORK_DIR" ]
+    [ -n "$REPORT_DIR" ]
+    [ -n "$LOG_DIR" ]
+    [ -n "$SCRIPT_START_TIME" ]
+    [ -n "$SCRIPT_PID" ]
 }
 
-@test "setup_environment: sets up color variables" {
+@test "setup_environment: creates required directories" {
     # Execute
     setup_environment
     
     # Assert
-    [ -n "$RED" ]
-    [ -n "$GREEN" ]
-    [ -n "$YELLOW" ]
-    [ -n "$BLUE" ]
-    [ -n "$NC" ]
+    [ -d "$WORK_DIR" ]
+    [ -d "$REPORT_DIR" ]
+    [ -d "$LOG_DIR" ]
 }
 
-@test "setup_environment: creates necessary directories" {
+@test "setup_environment: sets up logging when log file specified" {
     # Setup
-    export OUTPUT_DIR="$TEST_TEMP_DIR/test_output"
+    local test_log="test_log.log"
+    
+    # Execute
+    setup_environment "$test_log"
+    
+    # Assert
+    [ -n "$LOG_FILE" ]
+    [ -f "$LOG_FILE" ]
+    [[ "$LOG_FILE" =~ "$test_log" ]]
+}
+
+@test "setup_environment: fails when directory creation fails" {
+    # Setup
+    export OUTPUT_DIR="/root/readonly_dir"
     
     # Execute
     run setup_environment
     
     # Assert
-    [ "$status" -eq 0 ]
-    [ -d "$OUTPUT_DIR" ]
-}
-
-@test "setup_environment: handles missing output directory creation" {
-    # Setup - create read-only parent directory
-    local readonly_dir="$TEST_TEMP_DIR/readonly"
-    mkdir -p "$readonly_dir"
-    chmod 444 "$readonly_dir"
-    export OUTPUT_DIR="$readonly_dir/test_output"
-    
-    # Execute
-    run setup_environment
-    
-    # Assert - should handle gracefully
-    [ "$status" -eq 0 ]  # or 1 depending on implementation
-    
-    # Cleanup
-    chmod 755 "$readonly_dir"
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "Error: Failed to create directory" ]]
 }
 
 # =============================================================================
-# Tests for validate_prerequisites()
+# validate_prerequisites function tests  
 # =============================================================================
 
-@test "validate_prerequisites: passes when all tools are available" {
-    # Mock required tools
-    eval 'gcloud() { echo "Google Cloud SDK 400.0.0"; }'
-    eval 'jq() { echo "jq-1.6"; }'
-    eval 'curl() { echo "curl 7.68.0"; }'
+@test "validate_prerequisites: succeeds with proper setup" {
+    # Setup
+    mock_command_success "gcloud"
+    mock_command_success "jq"
+    mock_command_success "curl"
+    mock_gcloud_auth_active
+    mock_gcloud_projects_list
     
     # Execute
     run validate_prerequisites
     
     # Assert
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "Prerequisites validated successfully" ]]
-    
-    # Cleanup
-    unset -f gcloud jq curl
+    [[ "$output" =~ "All prerequisites validated successfully" ]]
 }
 
-@test "validate_prerequisites: fails when gcloud is missing" {
-    # Ensure gcloud is not available
-    eval 'gcloud() { return 127; }'  # Command not found
+@test "validate_prerequisites: fails when gcloud missing" {
+    # Setup
+    mock_command_missing "gcloud"
+    mock_command_success "jq"
+    mock_command_success "curl"
     
     # Execute
     run validate_prerequisites
     
     # Assert
     [ "$status" -eq 1 ]
-    [[ "$output" =~ "gcloud.*not found" ]]
-    
-    # Cleanup
-    unset -f gcloud
+    [[ "$output" =~ "Required tool 'gcloud' not found" ]]
 }
 
-@test "validate_prerequisites: fails when jq is missing" {
-    # Mock gcloud available but jq missing
-    eval 'gcloud() { echo "Google Cloud SDK 400.0.0"; }'
-    eval 'jq() { return 127; }'
+@test "validate_prerequisites: fails when not authenticated" {
+    # Setup
+    mock_command_success "gcloud"
+    mock_command_success "jq"
+    mock_command_success "curl"
+    mock_gcloud_auth_inactive
     
     # Execute
     run validate_prerequisites
     
     # Assert
     [ "$status" -eq 1 ]
-    [[ "$output" =~ "jq.*not found" ]]
-    
-    # Cleanup
-    unset -f gcloud jq
+    [[ "$output" =~ "gcloud not authenticated" ]]
 }
 
-@test "validate_prerequisites: checks network connectivity" {
-    # Mock tools available
-    eval 'gcloud() { echo "Google Cloud SDK 400.0.0"; }'
-    eval 'jq() { echo "jq-1.6"; }'
-    eval 'curl() { echo "curl 7.68.0"; }'
+@test "validate_prerequisites: validates specific project when PROJECT_ID set" {
+    # Setup
+    export PROJECT_ID="test-project-123"
+    mock_all_prerequisites_success
+    mock_gcloud_project_describe_success "$PROJECT_ID"
     
     # Execute
     run validate_prerequisites
     
     # Assert
     [ "$status" -eq 0 ]
-    # Should include connectivity check in output
-    
-    # Cleanup
-    unset -f gcloud jq curl
+    [[ "$output" =~ "Project 'test-project-123' accessible" ]]
 }
 
-@test "validate_prerequisites: handles network connectivity failure" {
-    # Mock tools available but network failing
-    eval 'gcloud() { echo "Google Cloud SDK 400.0.0"; }'
-    eval 'jq() { echo "jq-1.6"; }'
-    eval 'curl() { return 1; }'  # Network failure
-    
-    # Execute
-    run validate_prerequisites
-    
-    # Assert - depends on implementation; might warn but not fail
-    # [ "$status" -eq 1 ] || [ "$status" -eq 0 ]
-    
-    # Cleanup
-    unset -f gcloud jq curl
-}
-
-@test "validate_prerequisites: verifies gcloud authentication" {
-    # Mock gcloud with authentication check
-    eval 'gcloud() { 
-        if [[ "$*" == *"auth list"* ]]; then
-            echo "test-sa@test-project-12345.iam.gserviceaccount.com"
-        else
-            echo "Google Cloud SDK 400.0.0"
-        fi
-    }'
-    eval 'jq() { echo "jq-1.6"; }'
-    eval 'curl() { echo "curl 7.68.0"; }'
+@test "validate_prerequisites: fails when project inaccessible" {
+    # Setup
+    export PROJECT_ID="invalid-project"
+    mock_all_prerequisites_success
+    mock_gcloud_project_describe_failure "$PROJECT_ID"
     
     # Execute
     run validate_prerequisites
     
     # Assert
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "authenticated" ]] || [[ "$output" =~ "Prerequisites validated" ]]
-    
-    # Cleanup
-    unset -f gcloud jq curl
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "Cannot access project 'invalid-project'" ]]
 }
 
 # =============================================================================
-# Tests for print_status()
+# print_status function tests
 # =============================================================================
 
-@test "print_status: displays info messages correctly" {
+@test "print_status: formats INFO messages correctly" {
     # Execute
-    run print_status "info" "Test info message"
+    run print_status "INFO" "Test message"
     
     # Assert
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "Test info message" ]]
-    [[ "$output" =~ "INFO" ]] || [[ "$output" =~ "info" ]]
+    [[ "$output" =~ "\[INFO\]" ]]
+    [[ "$output" =~ "Test message" ]]
 }
 
-@test "print_status: displays success messages with color" {
+@test "print_status: formats PASS messages correctly" {
     # Execute
-    run print_status "success" "Test success message"
+    run print_status "PASS" "Test success"
     
     # Assert
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "Test success message" ]]
-    [[ "$output" =~ "SUCCESS" ]] || [[ "$output" =~ "success" ]]
+    [[ "$output" =~ "\[PASS\]" ]]
+    [[ "$output" =~ "Test success" ]]
 }
 
-@test "print_status: displays error messages correctly" {
+@test "print_status: formats WARN messages correctly" {
     # Execute
-    run print_status "error" "Test error message"
-    
-    # Assert
-    [ "$status" -eq 0 ]  # print_status itself shouldn't fail
-    [[ "$output" =~ "Test error message" ]]
-    [[ "$output" =~ "ERROR" ]] || [[ "$output" =~ "error" ]]
-}
-
-@test "print_status: displays warning messages correctly" {
-    # Execute
-    run print_status "warning" "Test warning message"
+    run print_status "WARN" "Test warning"
     
     # Assert
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "Test warning message" ]]
-    [[ "$output" =~ "WARNING" ]] || [[ "$output" =~ "warning" ]]
+    [[ "$output" =~ "\[WARN\]" ]]
+    [[ "$output" =~ "Test warning" ]]
 }
 
-@test "print_status: handles unknown message types gracefully" {
+@test "print_status: formats FAIL messages correctly" {
     # Execute
-    run print_status "unknown" "Test unknown message"
+    run print_status "FAIL" "Test failure"
     
     # Assert
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "Test unknown message" ]]
+    [[ "$output" =~ "\[FAIL\]" ]]
+    [[ "$output" =~ "Test failure" ]]
 }
 
-@test "print_status: respects verbose mode" {
+@test "print_status: handles backward compatibility aliases" {
+    # Execute
+    run print_status "info" "Test info"
+    
+    # Assert
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "\[INFO\]" ]]
+    [[ "$output" =~ "Test info" ]]
+}
+
+@test "print_status: logs to file when LOG_FILE set" {
+    # Setup
+    setup_environment "test_log.log"
+    
+    # Execute
+    print_status "INFO" "Test log message"
+    
+    # Assert
+    [ -f "$LOG_FILE" ]
+    grep -q "Test log message" "$LOG_FILE"
+}
+
+@test "print_status: outputs verbose debug when VERBOSE=true" {
     # Setup
     export VERBOSE=true
     
     # Execute
-    run print_status "debug" "Debug message"
+    run print_status "INFO" "Verbose test"
     
     # Assert
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "Debug message" ]]
+    [[ "$output" =~ "Verbose test" ]]
 }
 
-@test "print_status: suppresses debug in non-verbose mode" {
+# =============================================================================
+# log_debug function tests
+# =============================================================================
+
+@test "log_debug: outputs debug message when VERBOSE=true" {
+    # Setup
+    export VERBOSE=true
+    
+    # Execute
+    run log_debug "Debug test message"
+    
+    # Assert
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "DEBUG: Debug test message" ]]
+}
+
+@test "log_debug: silent when VERBOSE=false" {
     # Setup
     export VERBOSE=false
     
     # Execute
-    run print_status "debug" "Debug message"
+    run log_debug "Debug test message"
     
     # Assert
     [ "$status" -eq 0 ]
-    # Debug message should be suppressed in non-verbose mode
-    [[ ! "$output" =~ "Debug message" ]] || [[ "$output" == "" ]]
+    [ -z "$output" ]
 }
 
 # =============================================================================
-# Tests for log_debug()
+# Utility function tests
 # =============================================================================
 
-@test "log_debug: writes to log file when specified" {
-    # Setup
-    export LOG_FILE="$TEST_TEMP_DIR/test.log"
-    export VERBOSE=true
+@test "check_script_permissions: warns when running as root" {
+    # Setup - Mock EUID to simulate root
+    export EUID=0
     
-    # Execute
-    run log_debug "Test debug message"
-    
-    # Assert
-    [ "$status" -eq 0 ]
-    [ -f "$LOG_FILE" ]
-    grep -q "Test debug message" "$LOG_FILE"
-}
-
-@test "log_debug: includes timestamp in log entries" {
-    # Setup
-    export LOG_FILE="$TEST_TEMP_DIR/test.log"
-    export VERBOSE=true
-    
-    # Execute
-    log_debug "Test timestamp message"
-    
-    # Assert
-    [ -f "$LOG_FILE" ]
-    # Check if log contains timestamp pattern (YYYY-MM-DD HH:MM:SS)
-    grep -q "[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}" "$LOG_FILE"
-}
-
-@test "log_debug: handles missing log file directory" {
-    # Setup
-    export LOG_FILE="/nonexistent/directory/test.log"
-    export VERBOSE=true
-    
-    # Execute
-    run log_debug "Test message"
-    
-    # Assert - should handle gracefully
-    [ "$status" -eq 0 ] || [ "$status" -eq 1 ]
-}
-
-# =============================================================================
-# Tests for check_script_permissions()
-# =============================================================================
-
-@test "check_script_permissions: validates current script permissions" {
     # Execute
     run check_script_permissions
     
     # Assert
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "permissions" ]] || [ -z "$output" ]  # May be silent on success
+    [[ "$output" =~ "Running as root" ]]
 }
 
-@test "check_script_permissions: handles non-executable script" {
-    # Create a test script without execute permissions
-    local test_script="$TEST_TEMP_DIR/test_script.sh"
-    echo "#!/bin/bash" > "$test_script"
-    chmod 644 "$test_script"  # No execute permission
-    
-    # Mock BASH_SOURCE to point to our test script
-    BASH_SOURCE=("$test_script")
+@test "cleanup_temp_files: cleans up work directory" {
+    # Setup
+    setup_environment
+    mkdir -p "$WORK_DIR/test_subdir"
+    touch "$WORK_DIR/test_file.txt"
     
     # Execute
-    run check_script_permissions
+    run cleanup_temp_files
     
-    # Assert - depends on implementation
-    # Could warn or succeed depending on requirements
-    [ "$status" -eq 0 ] || [ "$status" -eq 1 ]
+    # Assert
+    [ "$status" -eq 0 ]
+    [ ! -f "$WORK_DIR/test_file.txt" ]
 }
-
-# =============================================================================
-# Tests for get_script_name()
-# =============================================================================
 
 @test "get_script_name: returns correct script name" {
-    # Mock BASH_SOURCE
-    BASH_SOURCE=("/path/to/test_script.sh")
-    
     # Execute
-    run get_script_name
+    result=$(get_script_name)
     
     # Assert
-    [ "$status" -eq 0 ]
-    [[ "$output" == "test_script.sh" ]]
-}
-
-@test "get_script_name: handles script name without path" {
-    # Mock BASH_SOURCE
-    BASH_SOURCE=("simple_script.sh")
-    
-    # Execute
-    run get_script_name
-    
-    # Assert
-    [ "$status" -eq 0 ]
-    [[ "$output" == "simple_script.sh" ]]
-}
-
-@test "get_script_name: handles empty BASH_SOURCE" {
-    # Mock empty BASH_SOURCE
-    BASH_SOURCE=()
-    
-    # Execute
-    run get_script_name
-    
-    # Assert
-    [ "$status" -eq 0 ]
-    # Should return default or empty string
-}
-
-# =============================================================================
-# Tests for cleanup_temp_files()
-# =============================================================================
-
-@test "cleanup_temp_files: removes temporary files" {
-    # Setup - create some temporary files
-    local temp_file1="$TEST_TEMP_DIR/temp1.tmp"
-    local temp_file2="$TEST_TEMP_DIR/temp2.tmp"
-    echo "test content" > "$temp_file1"
-    echo "test content" > "$temp_file2"
-    
-    # Simulate setting temp files in global state
-    # This depends on how the library tracks temp files
-    
-    # Execute
-    run cleanup_temp_files
-    
-    # Assert
-    [ "$status" -eq 0 ]
-    # Check that cleanup was attempted (implementation specific)
-}
-
-@test "cleanup_temp_files: handles missing files gracefully" {
-    # Execute cleanup when no temp files exist
-    run cleanup_temp_files
-    
-    # Assert
-    [ "$status" -eq 0 ]
-    # Should succeed even with no files to clean
+    [[ "$result" =~ "test_gcp_common_core.bats" ]]
 }

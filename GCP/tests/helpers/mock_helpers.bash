@@ -1,403 +1,696 @@
 #!/bin/bash
-# Mock Helper Functions for GCP PCI DSS Testing Framework
-# This file provides mock implementations for GCP services and commands
 
-# Mock GCloud Responses Directory
-setup_mock_responses_dir() {
-    export MOCK_RESPONSES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/mocks/mock_gcloud_responses"
-    mkdir -p "$MOCK_RESPONSES_DIR"
+# =============================================================================
+# Mock Helper Functions for GCP Command and API Simulation
+# =============================================================================
+
+# Global mock state
+MOCK_USER_INPUT_SEQUENCE=()
+MOCK_USER_INPUT_INDEX=0
+
+# =============================================================================
+# Command Mocking Functions
+# =============================================================================
+
+# Mock successful command availability
+mock_command_success() {
+    local command="$1"
+    eval "${command}() { return 0; }"
+    export -f "${command}"
 }
 
-# Create Mock Project List Response
-create_mock_projects_list() {
-    cat > "$MOCK_RESPONSES_DIR/projects_list.json" << 'EOF'
-[
-  {
-    "createTime": "2023-01-01T00:00:00.000Z",
-    "lifecycleState": "ACTIVE",
-    "name": "Test Project",
-    "projectId": "test-project-12345",
-    "projectNumber": "123456789012"
-  },
-  {
-    "createTime": "2023-01-01T00:00:00.000Z",
-    "lifecycleState": "ACTIVE",
-    "name": "Test Project 2",
-    "projectId": "test-project-67890",
-    "projectNumber": "123456789013"
-  }
-]
-EOF
+# Mock missing command
+mock_command_missing() {
+    local command="$1"
+    eval "${command}() { return 127; }"
+    export -f "${command}"
 }
 
-# Create Mock IAM Roles Response
-create_mock_iam_roles() {
-    cat > "$MOCK_RESPONSES_DIR/iam_roles.json" << 'EOF'
-{
-  "bindings": [
-    {
-      "members": [
-        "user:test@example.com",
-        "serviceAccount:test-sa@test-project-12345.iam.gserviceaccount.com"
-      ],
-      "role": "roles/viewer"
-    },
-    {
-      "members": [
-        "serviceAccount:test-sa@test-project-12345.iam.gserviceaccount.com"
-      ],
-      "role": "roles/securityReviewer"
-    },
-    {
-      "members": [
-        "user:admin@example.com"
-      ],
-      "role": "roles/owner"
+# Mock command with specific output
+mock_command_with_output() {
+    local command="$1"
+    local output="$2"
+    local exit_code="${3:-0}"
+    eval "${command}() { echo '$output'; return $exit_code; }"
+    export -f "${command}"
+}
+
+# Mock command failure
+mock_command_failure() {
+    local command="$1"
+    local exit_code="${2:-1}"
+    eval "${command}() { return $exit_code; }"
+    export -f "${command}"
+}
+
+# =============================================================================
+# GCloud Command Mocking Functions
+# =============================================================================
+
+# Mock gcloud authentication as active
+mock_gcloud_auth_active() {
+    gcloud() {
+        case "$*" in
+            "auth list --filter=status:ACTIVE --format=value(account)")
+                echo "test-user@example.com"
+                return 0
+                ;;
+            *)
+                echo "Mock gcloud: $*" >&2
+                return 0
+                ;;
+        esac
     }
-  ],
-  "etag": "BwXhqDSGKQQ=",
-  "version": 1
-}
-EOF
+    export -f gcloud
 }
 
-# Create Mock Compute Instances Response
-create_mock_compute_instances() {
-    cat > "$MOCK_RESPONSES_DIR/compute_instances.json" << 'EOF'
-{
-  "items": [
-    {
-      "id": "1234567890123456789",
-      "name": "test-instance-1",
-      "status": "RUNNING",
-      "zone": "projects/test-project-12345/zones/us-central1-a",
-      "machineType": "projects/test-project-12345/zones/us-central1-a/machineTypes/e2-medium",
-      "networkInterfaces": [
-        {
-          "network": "projects/test-project-12345/global/networks/default",
-          "subnetwork": "projects/test-project-12345/regions/us-central1/subnetworks/default"
-        }
-      ]
+# Mock gcloud authentication as inactive
+mock_gcloud_auth_inactive() {
+    gcloud() {
+        case "$*" in
+            "auth list --filter=status:ACTIVE --format=value(account)")
+                return 1
+                ;;
+            *)
+                echo "Mock gcloud: $*" >&2
+                return 1
+                ;;
+        esac
     }
-  ]
-}
-EOF
+    export -f gcloud
 }
 
-# Create Mock Security Groups/Firewall Rules Response
-create_mock_firewall_rules() {
-    cat > "$MOCK_RESPONSES_DIR/firewall_rules.json" << 'EOF'
-{
-  "items": [
-    {
-      "allowed": [
-        {
-          "IPProtocol": "tcp",
-          "ports": ["22"]
-        }
-      ],
-      "description": "Allow SSH from anywhere",
-      "direction": "INGRESS",
-      "id": "1234567890123456789",
-      "name": "allow-ssh",
-      "network": "projects/test-project-12345/global/networks/default",
-      "priority": 1000,
-      "sourceRanges": ["0.0.0.0/0"],
-      "targetTags": ["ssh-server"]
-    },
-    {
-      "allowed": [
-        {
-          "IPProtocol": "tcp",
-          "ports": ["80", "443"]
-        }
-      ],
-      "description": "Allow HTTP/HTTPS",
-      "direction": "INGRESS",
-      "id": "1234567890123456790",
-      "name": "allow-http-https",
-      "network": "projects/test-project-12345/global/networks/default",
-      "priority": 1000,
-      "sourceRanges": ["0.0.0.0/0"]
+# Mock gcloud projects list success
+mock_gcloud_projects_list() {
+    local existing_gcloud_func=""
+    if declare -F gcloud >/dev/null; then
+        existing_gcloud_func=$(declare -f gcloud)
+    fi
+    
+    gcloud() {
+        case "$*" in
+            "projects list --limit=1 --format=value(projectId)")
+                echo "test-project-123"
+                return 0
+                ;;
+            *)
+                if [[ -n "$existing_gcloud_func" ]]; then
+                    eval "$existing_gcloud_func"
+                    gcloud "$@"
+                else
+                    echo "Mock gcloud: $*" >&2
+                    return 0
+                fi
+                ;;
+        esac
     }
-  ]
-}
-EOF
+    export -f gcloud
 }
 
-# Create Mock Storage Buckets Response
-create_mock_storage_buckets() {
-    cat > "$MOCK_RESPONSES_DIR/storage_buckets.json" << 'EOF'
-{
-  "items": [
-    {
-      "id": "test-bucket-12345",
-      "name": "test-bucket-12345",
-      "projectNumber": "123456789012",
-      "location": "US",
-      "storageClass": "STANDARD",
-      "encryption": {
-        "defaultKmsKeyName": "projects/test-project-12345/locations/us/keyRings/test-ring/cryptoKeys/test-key"
-      }
-    },
-    {
-      "id": "test-bucket-public",
-      "name": "test-bucket-public",
-      "projectNumber": "123456789012",
-      "location": "US",
-      "storageClass": "STANDARD"
+# Mock gcloud project describe success
+mock_gcloud_project_describe_success() {
+    local project_id="$1"
+    local existing_gcloud_func=""
+    if declare -F gcloud >/dev/null; then
+        existing_gcloud_func=$(declare -f gcloud)
+    fi
+    
+    gcloud() {
+        case "$*" in
+            "projects describe $project_id")
+                cat << EOF
+name: projects/$project_id
+projectId: $project_id
+projectNumber: '123456789012'
+lifecycleState: ACTIVE
+createTime: '2023-01-01T00:00:00.000Z'
+EOF
+                return 0
+                ;;
+            *)
+                if [[ -n "$existing_gcloud_func" ]]; then
+                    eval "$existing_gcloud_func"
+                    gcloud "$@"
+                else
+                    echo "Mock gcloud: $*" >&2
+                    return 0
+                fi
+                ;;
+        esac
     }
-  ]
-}
-EOF
+    export -f gcloud
 }
 
-# Mock gcloud command with realistic responses
-mock_gcloud_command() {
-    local subcommand="$1"
+# Mock gcloud project describe failure
+mock_gcloud_project_describe_failure() {
+    local project_id="$1"
+    local existing_gcloud_func=""
+    if declare -F gcloud >/dev/null; then
+        existing_gcloud_func=$(declare -f gcloud)
+    fi
+    
+    gcloud() {
+        case "$*" in
+            "projects describe $project_id")
+                echo "ERROR: (gcloud.projects.describe) Project [$project_id] not found or access denied." >&2
+                return 1
+                ;;
+            *)
+                if [[ -n "$existing_gcloud_func" ]]; then
+                    eval "$existing_gcloud_func"
+                    gcloud "$@"
+                else
+                    echo "Mock gcloud: $*" >&2
+                    return 0
+                fi
+                ;;
+        esac
+    }
+    export -f gcloud
+}
+
+# Mock gcloud organization describe success
+mock_gcloud_organization_describe_success() {
+    local org_id="$1"
+    local existing_gcloud_func=""
+    if declare -F gcloud >/dev/null; then
+        existing_gcloud_func=$(declare -f gcloud)
+    fi
+    
+    gcloud() {
+        case "$*" in
+            "organizations describe $org_id")
+                cat << EOF
+name: organizations/$org_id
+organizationId: '$org_id'
+displayName: Test Organization
+lifecycleState: ACTIVE
+creationTime: '2023-01-01T00:00:00.000Z'
+EOF
+                return 0
+                ;;
+            *)
+                if [[ -n "$existing_gcloud_func" ]]; then
+                    eval "$existing_gcloud_func"
+                    gcloud "$@"
+                else
+                    echo "Mock gcloud: $*" >&2
+                    return 0
+                fi
+                ;;
+        esac
+    }
+    export -f gcloud
+}
+
+# Mock gcloud organization describe failure
+mock_gcloud_organization_describe_failure() {
+    local org_id="$1"
+    local existing_gcloud_func=""
+    if declare -F gcloud >/dev/null; then
+        existing_gcloud_func=$(declare -f gcloud)
+    fi
+    
+    gcloud() {
+        case "$*" in
+            "organizations describe $org_id")
+                echo "ERROR: (gcloud.organizations.describe) Organization [$org_id] not found or access denied." >&2
+                return 1
+                ;;
+            *)
+                if [[ -n "$existing_gcloud_func" ]]; then
+                    eval "$existing_gcloud_func"
+                    gcloud "$@"
+                else
+                    echo "Mock gcloud: $*" >&2
+                    return 0
+                fi
+                ;;
+        esac
+    }
+    export -f gcloud
+}
+
+# Mock gcloud IAM permissions test success
+mock_gcloud_test_iam_permissions_success() {
+    local project_id="$1"
     shift
-    local args="$*"
-    
-    case "$subcommand" in
-        "auth")
-            case "$args" in
-                *"activate-service-account"*)
-                    echo "Activated service account credentials for: [test-sa@test-project-12345.iam.gserviceaccount.com]"
-                    return 0
-                    ;;
-                *"list"*)
-                    echo "test-sa@test-project-12345.iam.gserviceaccount.com"
-                    return 0
-                    ;;
-                *)
-                    echo "Mock auth command: $args"
-                    return 0
-                    ;;
-            esac
-            ;;
-        "config")
-            case "$args" in
-                *"set project"*)
-                    echo "Updated property [core/project]."
-                    return 0
-                    ;;
-                *"get-value project"*)
-                    echo "$TEST_PROJECT_ID"
-                    return 0
-                    ;;
-                *)
-                    echo "Mock config command: $args"
-                    return 0
-                    ;;
-            esac
-            ;;
-        "projects")
-            case "$args" in
-                *"list"*)
-                    if [[ -f "$MOCK_RESPONSES_DIR/projects_list.json" ]]; then
-                        cat "$MOCK_RESPONSES_DIR/projects_list.json"
-                    else
-                        echo '[]'
-                    fi
-                    return 0
-                    ;;
-                *)
-                    echo '{"projectId":"test-project-12345","name":"Test Project"}'
-                    return 0
-                    ;;
-            esac
-            ;;
-        "iam")
-            case "$args" in
-                *"get-iam-policy"*)
-                    if [[ -f "$MOCK_RESPONSES_DIR/iam_roles.json" ]]; then
-                        cat "$MOCK_RESPONSES_DIR/iam_roles.json"
-                    else
-                        echo '{"bindings":[]}'
-                    fi
-                    return 0
-                    ;;
-                *)
-                    echo "Mock IAM command: $args"
-                    return 0
-                    ;;
-            esac
-            ;;
-        "compute")
-            case "$args" in
-                *"instances list"*)
-                    if [[ -f "$MOCK_RESPONSES_DIR/compute_instances.json" ]]; then
-                        cat "$MOCK_RESPONSES_DIR/compute_instances.json"
-                    else
-                        echo '{"items":[]}'
-                    fi
-                    return 0
-                    ;;
-                *"firewall-rules list"*)
-                    if [[ -f "$MOCK_RESPONSES_DIR/firewall_rules.json" ]]; then
-                        cat "$MOCK_RESPONSES_DIR/firewall_rules.json"
-                    else
-                        echo '{"items":[]}'
-                    fi
-                    return 0
-                    ;;
-                *)
-                    echo "Mock compute command: $args"
-                    return 0
-                    ;;
-            esac
-            ;;
-        "storage")
-            case "$args" in
-                *"buckets list"*)
-                    if [[ -f "$MOCK_RESPONSES_DIR/storage_buckets.json" ]]; then
-                        cat "$MOCK_RESPONSES_DIR/storage_buckets.json"
-                    else
-                        echo '{"items":[]}'
-                    fi
-                    return 0
-                    ;;
-                *)
-                    echo "Mock storage command: $args"
-                    return 0
-                    ;;
-            esac
-            ;;
-        *)
-            echo "Mock gcloud command: $subcommand $args"
-            return 0
-            ;;
-    esac
-}
-
-# Setup comprehensive mock environment
-setup_mock_gcp_environment() {
-    setup_mock_responses_dir
-    create_mock_projects_list
-    create_mock_iam_roles
-    create_mock_compute_instances
-    create_mock_firewall_rules
-    create_mock_storage_buckets
-    
-    # Ensure TEST_TEMP_DIR is set
-    if [[ -z "${TEST_TEMP_DIR:-}" ]]; then
-        export TEST_TEMP_DIR="$(mktemp -d)"
+    local permissions=("$@")
+    local existing_gcloud_func=""
+    if declare -F gcloud >/dev/null; then
+        existing_gcloud_func=$(declare -f gcloud)
     fi
     
-    # Mock environment variables
-    export CLOUDSDK_CORE_PROJECT="test-project-12345"
-    export GOOGLE_APPLICATION_CREDENTIALS="$TEST_TEMP_DIR/test-service-account.json"
-    export CLOUDSDK_CORE_DISABLE_USAGE_REPORTING=true
-    export CLOUDSDK_CORE_DISABLE_COLOR=true
-    
-    # Replace gcloud with mock
-    if command -v gcloud >/dev/null 2>&1; then
-        eval "original_gcloud_full() { command gcloud \"\$@\"; }"
+    gcloud() {
+        case "$*" in
+            "projects test-iam-permissions $project_id --permissions="*" --format=value(permissions)")
+                # Extract permissions from command line
+                local cmd_permissions=$(echo "$*" | sed -n 's/.*--permissions=\([^ ]*\).*/\1/p')
+                echo "$cmd_permissions"
+                return 0
+                ;;
+            *)
+                if [[ -n "$existing_gcloud_func" ]]; then
+                    eval "$existing_gcloud_func"
+                    gcloud "$@"
+                else
+                    echo "Mock gcloud: $*" >&2
+                    return 0
+                fi
+                ;;
+        esac
+    }
+    export -f gcloud
+}
+
+# Mock gcloud IAM permissions test failure
+mock_gcloud_test_iam_permissions_failure() {
+    local project_id="$1"
+    local existing_gcloud_func=""
+    if declare -F gcloud >/dev/null; then
+        existing_gcloud_func=$(declare -f gcloud)
     fi
-    eval "gcloud() { mock_gcloud_command \"\$@\"; }"
     
-    echo "Mock GCP environment setup complete"
+    gcloud() {
+        case "$*" in
+            "projects test-iam-permissions $project_id --permissions="*" --format=value(permissions)")
+                # Return empty - no permissions available
+                return 0
+                ;;
+            *)
+                if [[ -n "$existing_gcloud_func" ]]; then
+                    eval "$existing_gcloud_func"
+                    gcloud "$@"
+                else
+                    echo "Mock gcloud: $*" >&2
+                    return 0
+                fi
+                ;;
+        esac
+    }
+    export -f gcloud
 }
 
-# Restore original GCP environment
-restore_gcp_environment() {
-    if declare -f original_gcloud_full >/dev/null 2>&1; then
-        eval "gcloud() { original_gcloud_full \"\$@\"; }"
-        unset -f original_gcloud_full
+# Mock gcloud IAM permissions test with mixed results
+mock_gcloud_test_iam_permissions_mixed() {
+    local project_id="$1"
+    local available_permission="$2"
+    local existing_gcloud_func=""
+    if declare -F gcloud >/dev/null; then
+        existing_gcloud_func=$(declare -f gcloud)
     fi
     
-    unset CLOUDSDK_CORE_PROJECT GOOGLE_APPLICATION_CREDENTIALS
-    unset CLOUDSDK_CORE_DISABLE_USAGE_REPORTING CLOUDSDK_CORE_DISABLE_COLOR
-    
-    echo "GCP environment restored"
+    gcloud() {
+        case "$*" in
+            "projects test-iam-permissions $project_id --permissions="*" --format=value(permissions)")
+                # Extract permissions from command line
+                local cmd_permissions=$(echo "$*" | sed -n 's/.*--permissions=\([^ ]*\).*/\1/p')
+                if [[ "$cmd_permissions" == "$available_permission" ]]; then
+                    echo "$available_permission"
+                fi
+                return 0
+                ;;
+            *)
+                if [[ -n "$existing_gcloud_func" ]]; then
+                    eval "$existing_gcloud_func"
+                    gcloud "$@"
+                else
+                    echo "Mock gcloud: $*" >&2
+                    return 0
+                fi
+                ;;
+        esac
+    }
+    export -f gcloud
 }
 
-# Create mock error scenarios
-create_mock_error_scenarios() {
-    # Mock authentication failure
-    mock_auth_failure() {
-        echo "ERROR: (gcloud.auth.activate-service-account) Invalid key file" >&2
-        return 1
-    }
+# Mock gcloud access token check
+mock_gcloud_access_token() {
+    local existing_gcloud_func=""
+    if declare -F gcloud >/dev/null; then
+        existing_gcloud_func=$(declare -f gcloud)
+    fi
     
-    # Mock permission denied
-    mock_permission_denied() {
-        echo "ERROR: (gcloud.projects.get-iam-policy) User does not have permission to access project" >&2
-        return 1
+    gcloud() {
+        case "$*" in
+            "auth print-access-token")
+                echo "ya29.mock-access-token-here"
+                return 0
+                ;;
+            *)
+                if [[ -n "$existing_gcloud_func" ]]; then
+                    eval "$existing_gcloud_func"
+                    gcloud "$@"
+                else
+                    echo "Mock gcloud: $*" >&2
+                    return 0
+                fi
+                ;;
+        esac
     }
-    
-    # Mock network connectivity issue
-    mock_network_error() {
-        echo "ERROR: (gcloud) Network is unreachable" >&2
-        return 1
-    }
-    
-    export -f mock_auth_failure mock_permission_denied mock_network_error
+    export -f gcloud
 }
 
-# Simulate realistic response times
-add_response_delay() {
-    local delay_type="${1:-normal}"
-    
-    case "$delay_type" in
-        "fast")
-            sleep 0.1
-            ;;
-        "normal")
-            sleep 0.3
-            ;;
-        "slow")
-            sleep 1.0
-            ;;
-        "timeout")
-            sleep 5.0
-            ;;
-    esac
+# =============================================================================
+# Comprehensive Mock Setup Functions
+# =============================================================================
+
+# Mock all prerequisites as successful
+mock_all_prerequisites_success() {
+    mock_command_success "gcloud"
+    mock_command_success "jq"
+    mock_command_success "curl"
+    mock_gcloud_auth_active
+    mock_gcloud_projects_list
+    mock_gcloud_access_token
 }
 
-# Mock test data sets
-create_test_data_sets() {
-    local test_data_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/mocks/mock_data_sets"
-    mkdir -p "$test_data_dir"
+# Mock all prerequisites as failed
+mock_all_prerequisites_failure() {
+    mock_command_missing "gcloud"
+    mock_command_missing "jq"
+    mock_command_missing "curl"
+}
+
+# =============================================================================
+# User Input Mocking Functions
+# =============================================================================
+
+# Mock single user input
+mock_user_input() {
+    local input="$1"
     
-    # PCI DSS test scenarios
-    cat > "$test_data_dir/pci_compliant_project.json" << 'EOF'
+    read() {
+        if [[ "$*" =~ -p ]]; then
+            # Extract prompt and display it
+            local prompt=$(echo "$*" | sed -n 's/.*-p *"\([^"]*\)".*/\1/p')
+            if [[ -n "$prompt" ]]; then
+                echo -n "$prompt" >&2
+            fi
+        fi
+        
+        # Set the response variable
+        if [[ "$*" =~ [[:space:]]([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*$ ]]; then
+            local var_name="${BASH_REMATCH[1]}"
+            eval "$var_name='$input'"
+        else
+            # Default to 'response' if no variable specified
+            response="$input"
+        fi
+        
+        echo "$input" >&2
+        return 0
+    }
+    export -f read
+}
+
+# Mock sequence of user inputs
+mock_user_input_sequence() {
+    MOCK_USER_INPUT_SEQUENCE=("$@")
+    MOCK_USER_INPUT_INDEX=0
+    
+    read() {
+        if [[ "$*" =~ -p ]]; then
+            # Extract prompt and display it
+            local prompt=$(echo "$*" | sed -n 's/.*-p *"\([^"]*\)".*/\1/p')
+            if [[ -n "$prompt" ]]; then
+                echo -n "$prompt" >&2
+            fi
+        fi
+        
+        # Get current input from sequence
+        local current_input=""
+        if [[ $MOCK_USER_INPUT_INDEX -lt ${#MOCK_USER_INPUT_SEQUENCE[@]} ]]; then
+            current_input="${MOCK_USER_INPUT_SEQUENCE[$MOCK_USER_INPUT_INDEX]}"
+            ((MOCK_USER_INPUT_INDEX++))
+        fi
+        
+        # Set the response variable
+        if [[ "$*" =~ [[:space:]]([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*$ ]]; then
+            local var_name="${BASH_REMATCH[1]}"
+            eval "$var_name='$current_input'"
+        else
+            # Default to 'response' if no variable specified
+            response="$current_input"
+        fi
+        
+        echo "$current_input" >&2
+        return 0
+    }
+    export -f read
+}
+
+# Reset user input mocking
+reset_user_input_mock() {
+    unset -f read
+    MOCK_USER_INPUT_SEQUENCE=()
+    MOCK_USER_INPUT_INDEX=0
+}
+
+# =============================================================================
+# File System Mocking Functions
+# =============================================================================
+
+# Mock file existence check
+mock_file_exists() {
+    local file_path="$1"
+    local should_exist="${2:-true}"
+    
+    local original_test=""
+    if declare -F test >/dev/null; then
+        original_test=$(declare -f test)
+    fi
+    
+    test() {
+        if [[ "$*" == "-f $file_path" ]]; then
+            if [[ "$should_exist" == "true" ]]; then
+                return 0
+            else
+                return 1
+            fi
+        elif [[ -n "$original_test" ]]; then
+            eval "$original_test"
+            test "$@"
+        else
+            # Default test behavior
+            builtin test "$@"
+        fi
+    }
+    export -f test
+}
+
+# Mock directory existence check
+mock_directory_exists() {
+    local dir_path="$1"
+    local should_exist="${2:-true}"
+    
+    local original_test=""
+    if declare -F test >/dev/null; then
+        original_test=$(declare -f test)
+    fi
+    
+    test() {
+        if [[ "$*" == "-d $dir_path" ]]; then
+            if [[ "$should_exist" == "true" ]]; then
+                return 0
+            else
+                return 1
+            fi
+        elif [[ -n "$original_test" ]]; then
+            eval "$original_test"
+            test "$@"
+        else
+            # Default test behavior
+            builtin test "$@"
+        fi
+    }
+    export -f test
+}
+
+# =============================================================================
+# JSON Processing Mocking Functions
+# =============================================================================
+
+# Mock jq command success
+mock_jq_success() {
+    local output="$1"
+    
+    jq() {
+        echo "$output"
+        return 0
+    }
+    export -f jq
+}
+
+# Mock jq command failure
+mock_jq_failure() {
+    jq() {
+        echo "jq: error: mock failure" >&2
+        return 1
+    }
+    export -f jq
+}
+
+# =============================================================================
+# Network Mocking Functions
+# =============================================================================
+
+# Mock curl success
+mock_curl_success() {
+    local response="$1"
+    local status_code="${2:-200}"
+    
+    curl() {
+        echo "$response"
+        return 0
+    }
+    export -f curl
+}
+
+# Mock curl failure
+mock_curl_failure() {
+    local error_message="${1:-curl: (7) Failed to connect}"
+    
+    curl() {
+        echo "$error_message" >&2
+        return 7
+    }
+    export -f curl
+}
+
+# =============================================================================
+# Mock Data Generation Functions
+# =============================================================================
+
+# Generate mock GCP project response
+generate_mock_project_response() {
+    local project_id="$1"
+    local project_name="${2:-Test Project}"
+    local project_number="${3:-123456789012}"
+    
+    cat << EOF
 {
-  "project_id": "pci-compliant-project",
-  "firewall_rules": [
-    {
-      "name": "allow-ssh-internal",
-      "sourceRanges": ["10.0.0.0/8"]
-    }
-  ],
-  "encryption_keys": [
-    {
-      "name": "projects/pci-compliant-project/locations/us/keyRings/pci-ring/cryptoKeys/pci-key",
-      "state": "ENABLED"
-    }
-  ]
+  "projectId": "$project_id",
+  "name": "$project_name",
+  "projectNumber": "$project_number",
+  "lifecycleState": "ACTIVE",
+  "createTime": "2023-01-01T00:00:00.000Z"
 }
 EOF
-    
-    cat > "$test_data_dir/pci_non_compliant_project.json" << 'EOF'
-{
-  "project_id": "non-compliant-project",
-  "firewall_rules": [
-    {
-      "name": "allow-all",
-      "sourceRanges": ["0.0.0.0/0"],
-      "ports": ["*"]
-    }
-  ],
-  "encryption_keys": []
-}
-EOF
-    
-    echo "Test data sets created in $test_data_dir"
 }
 
-# Export mock functions
-export -f setup_mock_responses_dir create_mock_projects_list create_mock_iam_roles
-export -f create_mock_compute_instances create_mock_firewall_rules create_mock_storage_buckets
-export -f mock_gcloud_command setup_mock_gcp_environment restore_gcp_environment
-export -f create_mock_error_scenarios add_response_delay create_test_data_sets
+# Generate mock IAM permissions response
+generate_mock_permissions_response() {
+    local permissions=("$@")
+    local permissions_json=""
+    
+    for perm in "${permissions[@]}"; do
+        if [[ -n "$permissions_json" ]]; then
+            permissions_json+=","
+        fi
+        permissions_json+="\"$perm\""
+    done
+    
+    cat << EOF
+{
+  "permissions": [$permissions_json]
+}
+EOF
+}
+
+# Generate mock organization response
+generate_mock_organization_response() {
+    local org_id="$1"
+    local display_name="${2:-Test Organization}"
+    
+    cat << EOF
+{
+  "name": "organizations/$org_id",
+  "organizationId": "$org_id",
+  "displayName": "$display_name",
+  "lifecycleState": "ACTIVE",
+  "creationTime": "2023-01-01T00:00:00.000Z"
+}
+EOF
+}
+
+# =============================================================================
+# Mock State Management Functions
+# =============================================================================
+
+# Save current function definitions
+save_function_state() {
+    local functions_to_save=("$@")
+    
+    for func in "${functions_to_save[@]}"; do
+        if declare -F "$func" >/dev/null; then
+            declare -f "$func" > "$TEST_TMPDIR/saved_${func}.bash"
+        fi
+    done
+}
+
+# Restore saved function definitions
+restore_function_state() {
+    local functions_to_restore=("$@")
+    
+    for func in "${functions_to_restore[@]}"; do
+        if [[ -f "$TEST_TMPDIR/saved_${func}.bash" ]]; then
+            source "$TEST_TMPDIR/saved_${func}.bash"
+        fi
+    done
+}
+
+# Clear all mocks
+clear_all_mocks() {
+    # Clear command mocks
+    unset -f gcloud jq curl read test
+    
+    # Reset user input state
+    MOCK_USER_INPUT_SEQUENCE=()
+    MOCK_USER_INPUT_INDEX=0
+    
+    # Clear any environment variables set by mocks
+    unset MOCK_GCLOUD_AUTH_ACTIVE MOCK_PROJECT_ID MOCK_ORG_ID
+}
+
+# =============================================================================
+# Debugging and Verification Functions
+# =============================================================================
+
+# Verify mock function is active
+verify_mock_active() {
+    local function_name="$1"
+    
+    if declare -F "$function_name" >/dev/null; then
+        echo "Mock for '$function_name' is active"
+        return 0
+    else
+        echo "Mock for '$function_name' is NOT active" >&2
+        return 1
+    fi
+}
+
+# List all active mocks
+list_active_mocks() {
+    echo "Active mock functions:"
+    for func in gcloud jq curl read test; do
+        if declare -F "$func" >/dev/null; then
+            echo "  - $func"
+        fi
+    done
+}
+
+# Export all mock functions
+export -f mock_command_success mock_command_missing mock_command_with_output mock_command_failure
+export -f mock_gcloud_auth_active mock_gcloud_auth_inactive mock_gcloud_projects_list
+export -f mock_gcloud_project_describe_success mock_gcloud_project_describe_failure
+export -f mock_gcloud_organization_describe_success mock_gcloud_organization_describe_failure
+export -f mock_gcloud_test_iam_permissions_success mock_gcloud_test_iam_permissions_failure
+export -f mock_gcloud_test_iam_permissions_mixed mock_gcloud_access_token
+export -f mock_all_prerequisites_success mock_all_prerequisites_failure
+export -f mock_user_input mock_user_input_sequence reset_user_input_mock
+export -f mock_file_exists mock_directory_exists
+export -f mock_jq_success mock_jq_failure mock_curl_success mock_curl_failure
+export -f generate_mock_project_response generate_mock_permissions_response generate_mock_organization_response
+export -f save_function_state restore_function_state clear_all_mocks
+export -f verify_mock_active list_active_mocks

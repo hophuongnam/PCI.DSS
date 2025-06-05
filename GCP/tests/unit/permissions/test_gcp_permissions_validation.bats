@@ -1,521 +1,339 @@
 #!/usr/bin/env bats
-# Unit Tests for GCP Permissions Library - Validation and User Interaction
-# Tests: check_all_permissions, validate_scope_permissions, prompt_continue_limited, display_permission_guidance, log_permission_audit_trail
 
-# Load test configuration and helpers
-load '../../test_config'
-load '../../helpers/test_helpers'
-load '../../helpers/mock_helpers'
+# Unit tests for gcp_permissions.sh user interaction and validation functions
 
-# Setup and teardown for each test
+load ../../helpers/test_helpers
+load ../../helpers/mock_helpers
+
 setup() {
     setup_test_environment
-    setup_mock_gcp_environment
-    
-    # Source both libraries
-    source "$COMMON_LIB"
-    source "$PERMISSIONS_LIB"
-    
-    # Initialize permissions framework
-    init_permissions_framework
-    
-    # Reset state
-    unset PERMISSION_CHECK_RESULTS
-    declare -A PERMISSION_CHECK_RESULTS
+    load_gcp_common_library
+    load_gcp_permissions_library
 }
 
 teardown() {
-    teardown_test_environment
-    restore_gcp_environment
+    cleanup_test_environment
 }
 
 # =============================================================================
-# Tests for check_all_permissions()
+# prompt_continue_limited function tests
 # =============================================================================
 
-@test "check_all_permissions: checks all registered permissions" {
+@test "prompt_continue_limited: displays coverage information" {
     # Setup
-    register_required_permissions "compute.instances.list" "iam.roles.list" "storage.buckets.list"
-    export PROJECT_ID="test-project-12345"
+    export PERMISSION_COVERAGE_PERCENTAGE=75
+    export MISSING_PERMISSIONS_COUNT=2
+    export REQUIRED_PERMISSIONS=("perm1" "perm2" "perm3" "perm4" "perm5" "perm6" "perm7" "perm8")
+    declare -A PERMISSION_RESULTS
+    PERMISSION_RESULTS["perm1"]="MISSING"
+    PERMISSION_RESULTS["perm2"]="MISSING"
+    export PERMISSION_RESULTS
     
-    # Mock gcloud IAM test with mixed results
-    eval 'gcloud() {
-        case "$*" in
-            *"iam test-permissions"*"compute.instances.list"*)
-                echo "compute.instances.list"
-                return 0
-                ;;
-            *"iam test-permissions"*"iam.roles.list"*)
-                echo ""  # No permission
-                return 0
-                ;;
-            *"iam test-permissions"*"storage.buckets.list"*)
-                echo "storage.buckets.list"
-                return 0
-                ;;
-            *)
-                return 0
-                ;;
-        esac
-    }'
-    
-    # Execute
-    run check_all_permissions
-    
-    # Assert
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "compute.instances.list" ]]
-    [[ "$output" =~ "storage.buckets.list" ]]
-    [[ "$output" =~ "iam.roles.list" ]] || [[ "$output" =~ "denied" ]] || [[ "$output" =~ "missing" ]]
-    
-    # Cleanup
-    unset -f gcloud
-}
-
-@test "check_all_permissions: handles no registered permissions" {
-    # Execute without registering any permissions
-    run check_all_permissions
-    
-    # Assert
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "No permissions" ]] || [ -z "$output" ]
-}
-
-@test "check_all_permissions: reports coverage summary" {
-    # Setup
-    register_required_permissions "compute.instances.list" "iam.roles.list"
-    export PROJECT_ID="test-project-12345"
-    
-    # Mock gcloud with one success, one failure
-    eval 'gcloud() {
-        case "$*" in
-            *"iam test-permissions"*"compute.instances.list"*)
-                echo "compute.instances.list"
-                return 0
-                ;;
-            *"iam test-permissions"*"iam.roles.list"*)
-                echo ""
-                return 0
-                ;;
-            *)
-                return 0
-                ;;
-        esac
-    }'
-    
-    # Execute
-    run check_all_permissions
-    
-    # Assert
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "50%" ]] || [[ "$output" =~ "1" ]] || [[ "$output" =~ "coverage" ]]
-    
-    # Cleanup
-    unset -f gcloud
-}
-
-@test "check_all_permissions: handles gcloud command failures" {
-    # Setup
-    register_required_permissions "compute.instances.list"
-    export PROJECT_ID="test-project-12345"
-    
-    # Mock gcloud failure
-    eval 'gcloud() { return 1; }'
-    
-    # Execute
-    run check_all_permissions
-    
-    # Assert
-    [ "$status" -eq 1 ] || [ "$status" -eq 0 ]  # May continue with warnings
-    [[ "$output" =~ "error" ]] || [[ "$output" =~ "failed" ]]
-    
-    # Cleanup
-    unset -f gcloud
-}
-
-@test "check_all_permissions: updates permission coverage tracking" {
-    # Setup
-    register_required_permissions "compute.instances.list"
-    export PROJECT_ID="test-project-12345"
-    
-    # Mock gcloud
-    eval 'gcloud() {
-        case "$*" in
-            *"iam test-permissions"*)
-                echo "compute.instances.list"
-                return 0
-                ;;
-            *)
-                return 0
-                ;;
-        esac
-    }'
-    
-    # Execute
-    check_all_permissions
-    
-    # Assert - check internal state was updated
-    [[ "${PERMISSION_COVERAGE[compute.instances.list]}" ]] || [ "${#PERMISSION_COVERAGE[@]}" -gt 0 ]
-    
-    # Cleanup
-    unset -f gcloud
-}
-
-# =============================================================================
-# Tests for validate_scope_permissions()
-# =============================================================================
-
-@test "validate_scope_permissions: validates project scope permissions" {
-    # Setup
-    export PROJECT_ID="test-project-12345"
-    export SCOPE_TYPE="project"
-    register_required_permissions "compute.instances.list"
-    
-    # Mock gcloud
-    eval 'gcloud() {
-        case "$*" in
-            *"projects get-iam-policy"*)
-                echo '{"bindings":[{"role":"roles/viewer","members":["user:test@example.com"]}]}'
-                return 0
-                ;;
-            *"iam test-permissions"*)
-                echo "compute.instances.list"
-                return 0
-                ;;
-            *)
-                return 0
-                ;;
-        esac
-    }'
-    
-    # Execute
-    run validate_scope_permissions
-    
-    # Assert
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "valid" ]] || [[ "$output" =~ "permissions" ]] || [ -z "$output" ]
-    
-    # Cleanup
-    unset -f gcloud
-}
-
-@test "validate_scope_permissions: validates organization scope permissions" {
-    # Setup
-    export ORG_ID="123456789012"
-    export SCOPE_TYPE="organization"
-    register_required_permissions "resourcemanager.projects.list"
-    
-    # Mock gcloud
-    eval 'gcloud() {
-        case "$*" in
-            *"organizations get-iam-policy"*)
-                echo '{"bindings":[{"role":"roles/viewer","members":["user:test@example.com"]}]}'
-                return 0
-                ;;
-            *"organizations test-permissions"*)
-                echo "resourcemanager.projects.list"
-                return 0
-                ;;
-            *)
-                return 0
-                ;;
-        esac
-    }'
-    
-    # Execute
-    run validate_scope_permissions
-    
-    # Assert
-    [ "$status" -eq 0 ]
-    
-    # Cleanup
-    unset -f gcloud
-}
-
-@test "validate_scope_permissions: handles insufficient permissions" {
-    # Setup
-    export PROJECT_ID="test-project-12345"
-    export SCOPE_TYPE="project"
-    register_required_permissions "compute.instances.list" "iam.roles.list"
-    
-    # Mock gcloud with insufficient permissions
-    eval 'gcloud() {
-        case "$*" in
-            *"projects get-iam-policy"*)
-                echo "ERROR: (gcloud.projects.get-iam-policy) User does not have permission"
-                return 1
-                ;;
-            *"iam test-permissions"*)
-                echo ""  # No permissions
-                return 0
-                ;;
-            *)
-                return 0
-                ;;
-        esac
-    }'
-    
-    # Execute
-    run validate_scope_permissions
-    
-    # Assert
-    [ "$status" -eq 1 ]
-    [[ "$output" =~ "insufficient" ]] || [[ "$output" =~ "permission" ]] || [[ "$output" =~ "denied" ]]
-    
-    # Cleanup
-    unset -f gcloud
-}
-
-@test "validate_scope_permissions: handles missing scope configuration" {
-    # Setup - no PROJECT_ID or ORG_ID
-    unset PROJECT_ID ORG_ID SCOPE_TYPE
-    
-    # Execute
-    run validate_scope_permissions
-    
-    # Assert
-    [ "$status" -eq 1 ]
-    [[ "$output" =~ "scope" ]] || [[ "$output" =~ "configuration" ]]
-}
-
-# =============================================================================
-# Tests for prompt_continue_limited()
-# =============================================================================
-
-@test "prompt_continue_limited: displays limited permissions warning" {
-    # Setup
-    register_required_permissions "compute.instances.list" "iam.roles.list"
-    PERMISSION_COVERAGE["compute.instances.list"]="GRANTED"
-    PERMISSION_COVERAGE["iam.roles.list"]="DENIED"
-    
-    # Mock user input - continue
-    echo "y" | run prompt_continue_limited
-    
-    # Assert
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "limited" ]] || [[ "$output" =~ "continue" ]] || [[ "$output" =~ "warning" ]]
-}
-
-@test "prompt_continue_limited: handles user choosing to continue" {
-    # Setup
-    register_required_permissions "compute.instances.list"
-    PERMISSION_COVERAGE["compute.instances.list"]="DENIED"
-    
-    # Mock user input - yes
-    echo "yes" | run prompt_continue_limited
-    
-    # Assert
-    [ "$status" -eq 0 ]
-}
-
-@test "prompt_continue_limited: handles user choosing to abort" {
-    # Setup
-    register_required_permissions "compute.instances.list"
-    PERMISSION_COVERAGE["compute.instances.list"]="DENIED"
-    
-    # Mock user input - no
-    echo "no" | run prompt_continue_limited
-    
-    # Assert
-    [ "$status" -eq 1 ]
-}
-
-@test "prompt_continue_limited: handles non-interactive mode" {
-    # Setup
-    export NON_INTERACTIVE=true
-    register_required_permissions "compute.instances.list"
-    PERMISSION_COVERAGE["compute.instances.list"]="DENIED"
+    # Mock user input to continue
+    mock_user_input "y"
     
     # Execute
     run prompt_continue_limited
     
     # Assert
-    # Should handle non-interactive mode appropriately
-    [ "$status" -eq 0 ] || [ "$status" -eq 1 ]
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "Limited permissions detected (75% coverage)" ]]
+    [[ "$output" =~ "Missing 2 of 8 required permissions" ]]
+    [[ "$output" =~ "Assessment can continue with limited functionality" ]]
 }
 
-@test "prompt_continue_limited: shows coverage percentage" {
+@test "prompt_continue_limited: shows missing permissions in verbose mode" {
     # Setup
-    register_required_permissions "compute.instances.list" "iam.roles.list"
-    PERMISSION_COVERAGE["compute.instances.list"]="GRANTED"
-    PERMISSION_COVERAGE["iam.roles.list"]="DENIED"
+    export VERBOSE=true
+    export PERMISSION_COVERAGE_PERCENTAGE=50
+    export MISSING_PERMISSIONS_COUNT=1
+    export REQUIRED_PERMISSIONS=("available.perm" "missing.perm")
+    declare -A PERMISSION_RESULTS
+    PERMISSION_RESULTS["available.perm"]="AVAILABLE"
+    PERMISSION_RESULTS["missing.perm"]="MISSING"
+    export PERMISSION_RESULTS
+    
+    # Mock user input to continue
+    mock_user_input "y"
+    
+    # Execute
+    run prompt_continue_limited
+    
+    # Assert
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "Missing permissions:" ]]
+    [[ "$output" =~ "missing.perm" ]]
+    [[ ! "$output" =~ "available.perm" ]]
+}
+
+@test "prompt_continue_limited: accepts 'y' to continue" {
+    # Setup
+    export PERMISSION_COVERAGE_PERCENTAGE=80
+    export MISSING_PERMISSIONS_COUNT=1
+    export REQUIRED_PERMISSIONS=("perm1")
     
     # Mock user input
-    echo "y" | run prompt_continue_limited
+    mock_user_input "y"
+    
+    # Execute
+    run prompt_continue_limited
     
     # Assert
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "50%" ]] || [[ "$output" =~ "coverage" ]]
+    [[ "$output" =~ "Continuing with limited permissions" ]]
 }
 
-# =============================================================================
-# Tests for display_permission_guidance()
-# =============================================================================
-
-@test "display_permission_guidance: shows guidance for missing permissions" {
+@test "prompt_continue_limited: accepts 'yes' to continue" {
     # Setup
-    register_required_permissions "compute.instances.list" "iam.roles.list"
-    PERMISSION_COVERAGE["compute.instances.list"]="GRANTED"
-    PERMISSION_COVERAGE["iam.roles.list"]="DENIED"
+    export PERMISSION_COVERAGE_PERCENTAGE=60
+    export MISSING_PERMISSIONS_COUNT=2
+    export REQUIRED_PERMISSIONS=("perm1" "perm2")
+    
+    # Mock user input
+    mock_user_input "yes"
     
     # Execute
-    run display_permission_guidance
+    run prompt_continue_limited
     
     # Assert
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "guidance" ]] || [[ "$output" =~ "permission" ]] || [[ "$output" =~ "iam.roles.list" ]]
+    [[ "$output" =~ "Continuing with limited permissions" ]]
 }
 
-@test "display_permission_guidance: provides role suggestions" {
+@test "prompt_continue_limited: accepts 'Y' to continue (case insensitive)" {
     # Setup
-    register_required_permissions "compute.instances.list"
-    PERMISSION_COVERAGE["compute.instances.list"]="DENIED"
+    export PERMISSION_COVERAGE_PERCENTAGE=90
+    export MISSING_PERMISSIONS_COUNT=1
+    export REQUIRED_PERMISSIONS=("perm1")
+    
+    # Mock user input
+    mock_user_input "Y"
     
     # Execute
-    run display_permission_guidance
+    run prompt_continue_limited
     
     # Assert
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "role" ]] || [[ "$output" =~ "viewer" ]] || [[ "$output" =~ "compute" ]]
+    [[ "$output" =~ "Continuing with limited permissions" ]]
 }
 
-@test "display_permission_guidance: handles all permissions granted" {
+@test "prompt_continue_limited: accepts 'YES' to continue (case insensitive)" {
     # Setup
-    register_required_permissions "compute.instances.list"
-    PERMISSION_COVERAGE["compute.instances.list"]="GRANTED"
+    export PERMISSION_COVERAGE_PERCENTAGE=70
+    export MISSING_PERMISSIONS_COUNT=1
+    export REQUIRED_PERMISSIONS=("perm1")
+    
+    # Mock user input
+    mock_user_input "YES"
     
     # Execute
-    run display_permission_guidance
+    run prompt_continue_limited
     
     # Assert
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "sufficient" ]] || [[ "$output" =~ "all permissions" ]] || [ -z "$output" ]
+    [[ "$output" =~ "Continuing with limited permissions" ]]
 }
 
-@test "display_permission_guidance: shows project-specific guidance" {
+@test "prompt_continue_limited: rejects 'n' and cancels" {
     # Setup
-    export PROJECT_ID="test-project-12345"
-    export SCOPE_TYPE="project"
-    register_required_permissions "compute.instances.list"
-    PERMISSION_COVERAGE["compute.instances.list"]="DENIED"
+    export PERMISSION_COVERAGE_PERCENTAGE=40
+    export MISSING_PERMISSIONS_COUNT=3
+    export REQUIRED_PERMISSIONS=("perm1" "perm2" "perm3")
+    
+    # Mock user input
+    mock_user_input "n"
     
     # Execute
-    run display_permission_guidance
+    run prompt_continue_limited
+    
+    # Assert
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "Assessment cancelled by user" ]]
+}
+
+@test "prompt_continue_limited: rejects 'no' and cancels" {
+    # Setup
+    export PERMISSION_COVERAGE_PERCENTAGE=30
+    export MISSING_PERMISSIONS_COUNT=2
+    export REQUIRED_PERMISSIONS=("perm1" "perm2")
+    
+    # Mock user input
+    mock_user_input "no"
+    
+    # Execute
+    run prompt_continue_limited
+    
+    # Assert
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "Assessment cancelled by user" ]]
+}
+
+@test "prompt_continue_limited: defaults to 'no' on empty input" {
+    # Setup
+    export PERMISSION_COVERAGE_PERCENTAGE=50
+    export MISSING_PERMISSIONS_COUNT=1
+    export REQUIRED_PERMISSIONS=("perm1")
+    
+    # Mock user input (empty string)
+    mock_user_input ""
+    
+    # Execute
+    run prompt_continue_limited
+    
+    # Assert
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "Assessment cancelled by user" ]]
+}
+
+@test "prompt_continue_limited: rejects 'N' and cancels (case insensitive)" {
+    # Setup
+    export PERMISSION_COVERAGE_PERCENTAGE=25
+    export MISSING_PERMISSIONS_COUNT=3
+    export REQUIRED_PERMISSIONS=("perm1" "perm2" "perm3")
+    
+    # Mock user input
+    mock_user_input "N"
+    
+    # Execute
+    run prompt_continue_limited
+    
+    # Assert
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "Assessment cancelled by user" ]]
+}
+
+@test "prompt_continue_limited: rejects 'NO' and cancels (case insensitive)" {
+    # Setup
+    export PERMISSION_COVERAGE_PERCENTAGE=10
+    export MISSING_PERMISSIONS_COUNT=4
+    export REQUIRED_PERMISSIONS=("perm1" "perm2" "perm3" "perm4")
+    
+    # Mock user input
+    mock_user_input "NO"
+    
+    # Execute
+    run prompt_continue_limited
+    
+    # Assert
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "Assessment cancelled by user" ]]
+}
+
+@test "prompt_continue_limited: handles invalid input and reprompts" {
+    # Setup
+    export PERMISSION_COVERAGE_PERCENTAGE=60
+    export MISSING_PERMISSIONS_COUNT=2
+    export REQUIRED_PERMISSIONS=("perm1" "perm2")
+    
+    # Mock user input sequence: invalid, then valid
+    mock_user_input_sequence "invalid" "y"
+    
+    # Execute
+    run prompt_continue_limited
     
     # Assert
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "project" ]] || [[ "$output" =~ "test-project-12345" ]]
+    [[ "$output" =~ "Please enter 'y' for yes or 'n' for no" ]]
+    [[ "$output" =~ "Continuing with limited permissions" ]]
 }
 
-@test "display_permission_guidance: shows organization-specific guidance" {
+@test "prompt_continue_limited: handles multiple invalid inputs before valid response" {
     # Setup
-    export ORG_ID="123456789012"
-    export SCOPE_TYPE="organization"
-    register_required_permissions "resourcemanager.projects.list"
-    PERMISSION_COVERAGE["resourcemanager.projects.list"]="DENIED"
+    export PERMISSION_COVERAGE_PERCENTAGE=80
+    export MISSING_PERMISSIONS_COUNT=1
+    export REQUIRED_PERMISSIONS=("perm1")
+    
+    # Mock user input sequence: multiple invalid, then valid
+    mock_user_input_sequence "invalid1" "invalid2" "maybe" "n"
     
     # Execute
-    run display_permission_guidance
+    run prompt_continue_limited
+    
+    # Assert
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "Assessment cancelled by user" ]]
+    # Should show multiple prompts for invalid inputs
+    output_line_count=$(echo "$output" | grep -c "Please enter 'y' for yes or 'n' for no" || true)
+    [ "$output_line_count" -ge 3 ]
+}
+
+@test "prompt_continue_limited: shows correct prompt message" {
+    # Setup
+    export PERMISSION_COVERAGE_PERCENTAGE=70
+    export MISSING_PERMISSIONS_COUNT=1
+    export REQUIRED_PERMISSIONS=("perm1")
+    
+    # Mock user input
+    mock_user_input "y"
+    
+    # Execute
+    run prompt_continue_limited
     
     # Assert
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "organization" ]] || [[ "$output" =~ "123456789012" ]]
+    [[ "$output" =~ "Continue with limited permissions? [y/N]:" ]]
 }
 
-# =============================================================================
-# Tests for log_permission_audit_trail()
-# =============================================================================
-
-@test "log_permission_audit_trail: creates audit log entry" {
+@test "prompt_continue_limited: handles zero missing permissions edge case" {
     # Setup
-    export LOG_FILE="$TEST_TEMP_DIR/audit.log"
-    register_required_permissions "compute.instances.list"
-    PERMISSION_COVERAGE["compute.instances.list"]="GRANTED"
+    export PERMISSION_COVERAGE_PERCENTAGE=100
+    export MISSING_PERMISSIONS_COUNT=0
+    export REQUIRED_PERMISSIONS=("perm1" "perm2")
+    
+    # Mock user input
+    mock_user_input "y"
     
     # Execute
-    run log_permission_audit_trail "Permission check completed"
+    run prompt_continue_limited
     
     # Assert
     [ "$status" -eq 0 ]
-    [ -f "$LOG_FILE" ]
-    grep -q "Permission check completed" "$LOG_FILE"
+    [[ "$output" =~ "Missing 0 of 2 required permissions" ]]
+    [[ "$output" =~ "Limited permissions detected (100% coverage)" ]]
 }
 
-@test "log_permission_audit_trail: includes timestamp in audit log" {
+@test "prompt_continue_limited: handles single permission edge case" {
     # Setup
-    export LOG_FILE="$TEST_TEMP_DIR/audit.log"
+    export PERMISSION_COVERAGE_PERCENTAGE=0
+    export MISSING_PERMISSIONS_COUNT=1
+    export REQUIRED_PERMISSIONS=("single.perm")
+    declare -A PERMISSION_RESULTS
+    PERMISSION_RESULTS["single.perm"]="MISSING"
+    export PERMISSION_RESULTS
+    
+    # Mock user input
+    mock_user_input "n"
     
     # Execute
-    log_permission_audit_trail "Test audit message"
+    run prompt_continue_limited
     
     # Assert
-    [ -f "$LOG_FILE" ]
-    grep -q "[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}" "$LOG_FILE"
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "Missing 1 of 1 required permissions" ]]
+    [[ "$output" =~ "Limited permissions detected (0% coverage)" ]]
 }
 
-@test "log_permission_audit_trail: includes permission summary" {
+@test "prompt_continue_limited: correctly filters missing permissions in verbose mode" {
     # Setup
-    export LOG_FILE="$TEST_TEMP_DIR/audit.log"
-    register_required_permissions "compute.instances.list" "iam.roles.list"
-    PERMISSION_COVERAGE["compute.instances.list"]="GRANTED"
-    PERMISSION_COVERAGE["iam.roles.list"]="DENIED"
+    export VERBOSE=true
+    export PERMISSION_COVERAGE_PERCENTAGE=33
+    export MISSING_PERMISSIONS_COUNT=2
+    export REQUIRED_PERMISSIONS=("available.perm" "missing.perm1" "missing.perm2")
+    declare -A PERMISSION_RESULTS
+    PERMISSION_RESULTS["available.perm"]="AVAILABLE"
+    PERMISSION_RESULTS["missing.perm1"]="MISSING"
+    PERMISSION_RESULTS["missing.perm2"]="MISSING"
+    export PERMISSION_RESULTS
+    
+    # Mock user input
+    mock_user_input "y"
     
     # Execute
-    log_permission_audit_trail "Audit test"
-    
-    # Assert
-    [ -f "$LOG_FILE" ]
-    grep -q "compute.instances.list" "$LOG_FILE" || grep -q "iam.roles.list" "$LOG_FILE"
-}
-
-@test "log_permission_audit_trail: handles missing log file directory" {
-    # Setup
-    export LOG_FILE="/nonexistent/directory/audit.log"
-    
-    # Execute
-    run log_permission_audit_trail "Test message"
-    
-    # Assert
-    # Should handle gracefully
-    [ "$status" -eq 0 ] || [ "$status" -eq 1 ]
-}
-
-@test "log_permission_audit_trail: includes scope information" {
-    # Setup
-    export LOG_FILE="$TEST_TEMP_DIR/audit.log"
-    export PROJECT_ID="test-project-12345"
-    export SCOPE_TYPE="project"
-    
-    # Execute
-    log_permission_audit_trail "Scope test"
-    
-    # Assert
-    [ -f "$LOG_FILE" ]
-    grep -q "test-project-12345" "$LOG_FILE" || grep -q "project" "$LOG_FILE"
-}
-
-@test "log_permission_audit_trail: handles empty message" {
-    # Setup
-    export LOG_FILE="$TEST_TEMP_DIR/audit.log"
-    
-    # Execute
-    run log_permission_audit_trail ""
+    run prompt_continue_limited
     
     # Assert
     [ "$status" -eq 0 ]
-    [ -f "$LOG_FILE" ]
-}
-
-@test "log_permission_audit_trail: appends to existing log file" {
-    # Setup
-    export LOG_FILE="$TEST_TEMP_DIR/audit.log"
-    echo "Previous log entry" > "$LOG_FILE"
-    
-    # Execute
-    log_permission_audit_trail "New log entry"
-    
-    # Assert
-    [ -f "$LOG_FILE" ]
-    grep -q "Previous log entry" "$LOG_FILE"
-    grep -q "New log entry" "$LOG_FILE"
+    [[ "$output" =~ "missing.perm1" ]]
+    [[ "$output" =~ "missing.perm2" ]]
+    [[ ! "$output" =~ "available.perm" ]]
 }
