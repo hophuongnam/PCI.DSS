@@ -14,19 +14,21 @@ GCP Identity and Access Management (IAM) provides granular access controls neces
 
 ## Permission Structure
 
-### Custom Role vs Predefined Roles
+### Built-in Role vs Custom Role
 
-**Recommended Approach: Custom Role**
-- **`roles/pcidss_assessor`** - Custom role with exactly the permissions needed for PCI DSS assessment
-- Follows least privilege principle (PCI DSS Requirement 7.2.1)
-- Organization-level access for comprehensive assessment
-- Read-only permissions only
-
-**Alternative: Predefined Role Combination** (Less secure)
-- `roles/viewer` - Base read access to most resources
-- `roles/security.securityReviewer` - Security-specific read access
+**Recommended Approach: Built-in Role Combination** (Easier to manage)
+- `roles/viewer` - Comprehensive read access to most resources
+- `roles/iam.securityReviewer` - IAM and security-specific read access
 - `roles/logging.viewer` - Audit log access
 - `roles/monitoring.viewer` - Monitoring data access
+- `roles/cloudasset.viewer` - Asset inventory across organization
+- `roles/accesscontextmanager.policyReader` - VPC Service Controls access
+
+**Alternative: Custom Role** (More complex to maintain)
+- **`roles/pcidss_assessor`** - Custom role with exactly the permissions needed for PCI DSS assessment
+- Follows stricter least privilege principle (PCI DSS Requirement 7.2.1)
+- Requires custom role maintenance and updates
+- More complex setup and debugging
 
 ## Permission Categories by PCI DSS Requirement
 
@@ -294,14 +296,13 @@ GCP Identity and Access Management (IAM) provides granular access controls neces
 
 ## Setting Up the Assessment Service Account
 
-### Step 1: Create the Custom Role
+### Step 1: No Custom Role Creation Required
 
-```bash
-# Create the custom role at organization level
-gcloud iam roles create pcidss_assessor \
-  --organization=ORGANIZATION_ID \
-  --file=gcp_pci_dss_assessor_role.yaml
-```
+**Using Built-in Roles (Recommended):**
+- No custom role creation needed
+- Google-managed roles stay automatically updated
+- Easier to debug and troubleshoot permissions
+- Well-documented role definitions
 
 ### Step 2: Create the Service Account
 
@@ -315,14 +316,37 @@ gcloud iam service-accounts create pci-dss-assessor \
 ### Step 3: Grant Organization-Level Access
 
 ```bash
-# Grant custom role at organization level
+# Grant built-in roles at organization level
+SA_EMAIL="pci-dss-assessor@PROJECT_ID.iam.gserviceaccount.com"
+
+# Core assessment roles
 gcloud organizations add-iam-policy-binding ORGANIZATION_ID \
-  --member="serviceAccount:pci-dss-assessor@PROJECT_ID.iam.gserviceaccount.com" \
-  --role="organizations/ORGANIZATION_ID/roles/pcidss_assessor"
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/viewer"
+
+gcloud organizations add-iam-policy-binding ORGANIZATION_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/iam.securityReviewer"
+
+gcloud organizations add-iam-policy-binding ORGANIZATION_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/logging.viewer"
+
+gcloud organizations add-iam-policy-binding ORGANIZATION_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/monitoring.viewer"
+
+gcloud organizations add-iam-policy-binding ORGANIZATION_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/cloudasset.viewer"
+
+gcloud organizations add-iam-policy-binding ORGANIZATION_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/accesscontextmanager.policyReader"
 
 # Optional: Grant Cloud Shell access
 gcloud projects add-iam-policy-binding PROJECT_ID \
-  --member="serviceAccount:pci-dss-assessor@PROJECT_ID.iam.gserviceaccount.com" \
+  --member="serviceAccount:$SA_EMAIL" \
   --role="roles/cloudshell.user"
 ```
 

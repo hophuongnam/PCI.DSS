@@ -46,21 +46,38 @@ gcloud config set project PROJECT_ID
 # - Service account creation and permissions
 ```
 
-#### Manual Setup
+#### Manual Setup (Built-in Roles - Recommended)
 ```bash
-# Create custom role at organization level
-gcloud iam roles create pcidss_assessor \
-  --organization=ORG_ID \
-  --file=gcp_pci_dss_assessor_role.yaml
-
 # Create service account
 gcloud iam service-accounts create pci-dss-assessor \
   --display-name="PCI DSS 4.0.1 Assessor"
 
-# Grant organization-level permissions
+# Grant built-in roles at organization level
+SA_EMAIL="pci-dss-assessor@PROJECT_ID.iam.gserviceaccount.com"
+
 gcloud organizations add-iam-policy-binding ORG_ID \
-  --member="serviceAccount:pci-dss-assessor@PROJECT_ID.iam.gserviceaccount.com" \
-  --role="organizations/ORG_ID/roles/pcidss_assessor"
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/viewer"
+
+gcloud organizations add-iam-policy-binding ORG_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/iam.securityReviewer"
+
+gcloud organizations add-iam-policy-binding ORG_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/logging.viewer"
+
+gcloud organizations add-iam-policy-binding ORG_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/monitoring.viewer"
+
+gcloud organizations add-iam-policy-binding ORG_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/cloudasset.viewer"
+
+gcloud organizations add-iam-policy-binding ORG_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/accesscontextmanager.policyReader"
 ```
 
 ### 3. Run Assessment Scripts
@@ -197,17 +214,22 @@ Scripts generate detailed HTML reports with:
 
 ## 🔐 Required Permissions
 
-### Minimum Project Permissions
-The service account needs these roles at the project level:
-- `roles/viewer` - Base read access
-- `roles/security.securityReviewer` - Security resource access
-- `roles/logging.viewer` - Audit log access
+### Built-in Roles (Recommended)
+The service account needs these built-in roles for comprehensive assessment:
 
-### Organization Permissions
-For organization-wide assessments, additional permissions:
-- `roles/resourcemanager.organizationViewer` - Organization resource access
-- `roles/browser` - Cross-project visibility
-- Custom role: `organizations/ORG_ID/roles/pcidss_assessor`
+**Core Assessment Roles:**
+- `roles/viewer` - Comprehensive read access to most resources
+- `roles/iam.securityReviewer` - IAM and security-specific access
+- `roles/logging.viewer` - Audit log access
+- `roles/monitoring.viewer` - Monitoring data access
+- `roles/cloudasset.viewer` - Asset inventory across organization
+- `roles/accesscontextmanager.policyReader` - VPC Service Controls access
+
+**Benefits:**
+- ✅ No custom role maintenance required
+- ✅ Always up-to-date with GCP service changes
+- ✅ Easier to debug and troubleshoot
+- ✅ Well-documented permissions
 
 ### Detailed Permission Matrix
 See `GCP_PCI_DSS_Permission_Requirements.md` for comprehensive permission mapping by PCI DSS requirement.
@@ -269,9 +291,9 @@ gcloud auth activate-service-account --key-file=CORRECT_PATH/pci-assessor-key.js
 ```
 GCP/
 ├── README.md                              # This file
-├── gcp_pci_dss_assessor_role.yaml         # Custom IAM role definition
+├── gcp_pci_dss_assessor_role.yaml         # Custom IAM role definition (optional)
 ├── GCP_PCI_DSS_Permission_Requirements.md # Detailed permission documentation
-├── setup_pci_assessor_permissions.sh      # Automated permission setup
+├── setup_pci_assessor_permissions.sh      # Automated permission setup (uses built-in roles)
 ├── gcp_pci_dss_script_template.sh         # Template for new scripts
 ├── check_gcp_pci_requirement1.sh          # Requirement 1 assessment
 ├── check_gcp_pci_requirement2.sh          # Requirement 2 assessment

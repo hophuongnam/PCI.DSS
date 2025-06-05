@@ -1,5 +1,20 @@
+# DEPRECATED: Custom Role Definition for PCI DSS 4.0.1 Assessment
+#
+# This file is maintained for reference only. The recommended approach
+# is now to use built-in GCP roles for easier management and maintenance.
+#
+# Recommended Built-in Roles:
+# - roles/viewer
+# - roles/iam.securityReviewer 
+# - roles/logging.viewer
+# - roles/monitoring.viewer
+# - roles/cloudasset.viewer
+# - roles/accesscontextmanager.policyReader
+#
+# Use setup_pci_assessor_permissions.sh to configure built-in roles automatically.
+
 title: "PCI DSS 4.0.1 Assessor"
-description: "Custom IAM role for PCI DSS 4.0.1 compliance assessment with organization-level read-only access"
+description: "DEPRECATED: Custom IAM role for PCI DSS 4.0.1 compliance assessment. Use built-in roles instead."
 stage: "GA"
 includedPermissions:
 

@@ -133,41 +133,23 @@ enable_apis() {
     done
 }
 
-# Create custom IAM role
-create_custom_role() {
-    print_section "Creating Custom IAM Role"
+# Skip custom role creation - using built-in roles
+skip_custom_role() {
+    print_section "Using Built-in Roles (Skipping Custom Role Creation)"
     
-    # Check if role definition file exists
-    if [ ! -f "gcp_pci_dss_assessor_role.yaml" ]; then
-        print_status $RED "Error: Role definition file 'gcp_pci_dss_assessor_role.yaml' not found."
-        print_status $YELLOW "Please ensure the role definition file is in the current directory."
-        exit 1
-    fi
+    print_status $GREEN "Using built-in roles for easier management:"
+    echo "  ✓ roles/viewer - Broad read access"
+    echo "  ✓ roles/iam.securityReviewer - IAM security review"
+    echo "  ✓ roles/logging.viewer - Audit logs"
+    echo "  ✓ roles/monitoring.viewer - Monitoring data"
+    echo "  ✓ roles/cloudasset.viewer - Asset inventory"
+    echo "  ✓ roles/accesscontextmanager.policyReader - VPC Service Controls"
     
-    print_status $CYAN "Creating custom role: $CUSTOM_ROLE_ID"
-    
-    # Check if role already exists
-    if gcloud iam roles describe $CUSTOM_ROLE_ID --organization=$ORGANIZATION_ID &> /dev/null; then
-        print_status $YELLOW "Role already exists. Updating..."
-        if gcloud iam roles update $CUSTOM_ROLE_ID \
-            --organization=$ORGANIZATION_ID \
-            --file=gcp_pci_dss_assessor_role.yaml; then
-            print_status $GREEN "Role updated successfully."
-        else
-            print_status $RED "Failed to update role."
-            exit 1
-        fi
-    else
-        print_status $CYAN "Creating new role..."
-        if gcloud iam roles create $CUSTOM_ROLE_ID \
-            --organization=$ORGANIZATION_ID \
-            --file=gcp_pci_dss_assessor_role.yaml; then
-            print_status $GREEN "Role created successfully."
-        else
-            print_status $RED "Failed to create role."
-            exit 1
-        fi
-    fi
+    print_status $CYAN "Benefits of built-in roles:"
+    echo "  • No custom role maintenance required"
+    echo "  • Always up-to-date with GCP service changes"
+    echo "  • Easier to debug and troubleshoot"
+    echo "  • Well-documented permissions"
 }
 
 # Create service account
@@ -201,19 +183,30 @@ grant_organization_permissions() {
     print_section "Granting Organization-Level Permissions"
     
     local sa_email="${SERVICE_ACCOUNT_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
-    local custom_role="organizations/${ORGANIZATION_ID}/roles/${CUSTOM_ROLE_ID}"
     
-    print_status $CYAN "Granting custom role to service account..."
+    # Define built-in roles for PCI DSS assessment
+    local roles=(
+        "roles/viewer"                              # Broad read access
+        "roles/iam.securityReviewer"               # IAM security review
+        "roles/logging.viewer"                     # Audit logs
+        "roles/monitoring.viewer"                  # Monitoring data
+        "roles/cloudasset.viewer"                  # Asset inventory
+        "roles/accesscontextmanager.policyReader"  # VPC Service Controls
+    )
     
-    if gcloud organizations add-iam-policy-binding $ORGANIZATION_ID \
-        --member="serviceAccount:$sa_email" \
-        --role="$custom_role"; then
-        print_status $GREEN "Organization-level permissions granted successfully."
-    else
-        print_status $RED "Failed to grant organization permissions."
-        print_status $YELLOW "This may be due to insufficient permissions. Please check with your organization admin."
-        exit 1
-    fi
+    print_status $CYAN "Granting built-in roles to service account..."
+    
+    for role in "${roles[@]}"; do
+        echo -n "Granting $role... "
+        if gcloud organizations add-iam-policy-binding $ORGANIZATION_ID \
+            --member="serviceAccount:$sa_email" \
+            --role="$role" &>/dev/null; then
+            print_status $GREEN "✓"
+        else
+            print_status $RED "✗ Failed to grant $role"
+            print_status $YELLOW "This may be due to insufficient permissions. Please check with your organization admin."
+        fi
+    done
     
     # Grant Cloud Shell access at project level
     print_status $CYAN "Granting Cloud Shell access..."
@@ -428,7 +421,7 @@ main() {
     
     # Execute setup steps
     enable_apis
-    create_custom_role
+    skip_custom_role
     create_service_account
     grant_organization_permissions
     
@@ -448,7 +441,13 @@ main() {
     
     echo -e "${GREEN}PCI DSS 4.0.1 Assessor setup completed successfully!${NC}"
     echo -e "${YELLOW}Service Account: $sa_email${NC}"
-    echo -e "${YELLOW}Custom Role: organizations/$ORGANIZATION_ID/roles/$CUSTOM_ROLE_ID${NC}"
+    echo -e "${YELLOW}Granted Built-in Roles:${NC}"
+    echo "  • roles/viewer"
+    echo "  • roles/iam.securityReviewer"
+    echo "  • roles/logging.viewer"
+    echo "  • roles/monitoring.viewer"
+    echo "  • roles/cloudasset.viewer"
+    echo "  • roles/accesscontextmanager.policyReader"
     
     if [ "$KEY_CREATED" = true ]; then
         echo -e "${CYAN}Service account key file created (check current directory)${NC}"
