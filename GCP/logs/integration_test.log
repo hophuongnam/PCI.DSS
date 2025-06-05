@@ -1,0 +1,3 @@
+[2025-06-05 17:58:57] [PASS] Registered 3 permissions for Requirement 1
+[2025-06-05 17:58:57] [INFO] Validating scope permissions...
+[2025-06-05 17:58:59] [FAIL] Cannot access project: test-project-id
