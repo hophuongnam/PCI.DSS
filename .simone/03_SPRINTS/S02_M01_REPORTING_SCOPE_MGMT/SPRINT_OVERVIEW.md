@@ -35,6 +35,14 @@ Complete the shared library framework by implementing HTML reporting and scope m
 - [ ] Performance validation shows <5% overhead vs current implementation
 - [ ] All shared libraries working together as cohesive framework
 
+## Sprint Tasks
+1. **T01_S02** - HTML Report Engine Implementation (Medium)
+2. **T02_S02** - Scope Management Engine Implementation (Medium)
+3. **T03_S02** - Integration Testing & Performance Validation (Medium)
+4. **T04_S02** - Documentation & API Completion (Low)
+5. **T05_S02** - Pilot Script Migration (High)
+6. **T06_S02** - Complete Framework Validation (Medium)
+
 ## Notes / Retrospective Points
 - **Dependencies:** Requires completion of Sprint S01 (Core Shared Libraries)
 - **Risk:** HTML report generation must maintain backward compatibility with existing output
