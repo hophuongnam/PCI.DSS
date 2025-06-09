@@ -4,8 +4,8 @@ current_milestone_id: M01
 highest_sprint_in_milestone: S06
 current_sprint_id: S02
 status: active
-last_updated: 2025-06-09 13:25:00
-current_task: TX001_Create_GCP_Script_For_Requirement_9 (completed)
+last_updated: 2025-06-09 14:26:00
+current_task: TX002_Check_GCP_Requirement1_Script (completed)
 ---
 
 # Project Manifest: PCI DSS Compliance Automation Toolkit
@@ -81,6 +81,7 @@ This project follows a milestone-based development approach.
 ## General Tasks
 
 - [✅] [TX001: Create GCP Script For Requirement 9](04_GENERAL_TASKS/TX001_Create_GCP_Script_For_Requirement_9.md) - Status: Completed
+- [✅] [TX002: Check GCP Requirement 1 Script and Rewrite if Needed](04_GENERAL_TASKS/TX002_Check_GCP_Requirement1_Script.md) - Status: Completed
 
 ## 5. Quick Links
 

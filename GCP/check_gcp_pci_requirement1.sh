@@ -3,44 +3,229 @@
 # PCI DSS Requirement 1 Compliance Check Script for GCP
 # This script evaluates GCP network security controls for PCI DSS Requirement 1 compliance
 # Requirements covered: 1.2 - 1.5 (Network Security Controls, CDE isolation, etc.)
+# Requirement 1.1 removed - requires manual verification
 
-# Load shared libraries
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LIB_DIR="$SCRIPT_DIR/lib"
+# Load shared libraries using framework pattern
+LIB_DIR="$(dirname "$0")/lib"
 
-source "$LIB_DIR/gcp_common.sh" || exit 1
-source "$LIB_DIR/gcp_permissions.sh" || exit 1
-source "$LIB_DIR/gcp_scope_mgmt.sh" || exit 1
-source "$LIB_DIR/gcp_html_report.sh" || exit 1
+# Source all 4 required libraries
+source_gcp_libraries() {
+    source "$LIB_DIR/gcp_common.sh"
+    source "$LIB_DIR/gcp_permissions.sh"
+    source "$LIB_DIR/gcp_scope_mgmt.sh"
+    source "$LIB_DIR/gcp_html_report.sh"
+}
 
-# Script-specific variables
-REQUIREMENT_NUMBER="1"
+# Initialize framework
+source_gcp_libraries
 
-# Initialize environment
-setup_environment || exit 1
+# Variables for scope control (will use shared library parsing)
+ASSESSMENT_SCOPE="project"  # Default to project scope
+SPECIFIC_PROJECT=""
+SPECIFIC_ORG=""
 
-# Parse command line arguments using shared function
+# Function to show help
+show_help() {
+    echo "GCP PCI DSS Requirement 1 Assessment Script"
+    echo "==========================================="
+    echo ""
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  -s, --scope SCOPE          Assessment scope: 'project' or 'organization' (default: project)"
+    echo "  -p, --project PROJECT_ID   Specific project to assess (overrides current gcloud config)"
+    echo "  -o, --org ORG_ID          Specific organization ID to assess (required for organization scope)"
+    echo "  -h, --help                Show this help message"
+    echo ""
+    echo "Examples:"
+    echo "  $0                                    # Assess current project"
+    echo "  $0 --scope project --project my-proj # Assess specific project" 
+    echo "  $0 --scope organization --org 123456 # Assess entire organization"
+    echo ""
+    echo "Note: Organization scope requires appropriate permissions across all projects in the organization."
+}
+
+# Initialize framework environment
+setup_environment
+
+# Parse command line arguments using shared framework
 parse_common_arguments "$@"
-case $? in
-    1) exit 1 ;;  # Error
-    2) exit 0 ;;  # Help displayed
-esac
 
-# Setup report configuration using shared library
-load_requirement_config "${REQUIREMENT_NUMBER}"
+# Register required permissions for this assessment
+register_required_permissions "compute.networks.list" "compute.firewalls.list" "compute.instances.list"
 
-# Validate scope and setup project context using shared library
-setup_assessment_scope || exit 1
+# Define variables
+REQUIREMENT_NUMBER="1"
+REPORT_TITLE="PCI DSS 4.0.1 - Requirement $REQUIREMENT_NUMBER Compliance Assessment Report (GCP)"
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+OUTPUT_DIR="./reports"
 
-# Check permissions using shared library
-check_required_permissions "compute.networks.list" "compute.firewalls.list" || exit 1
+# Set scope-specific variables
+if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
+    OUTPUT_FILE="$OUTPUT_DIR/gcp_org_pci_req${REQUIREMENT_NUMBER}_report_$TIMESTAMP.html"
+    REPORT_TITLE="$REPORT_TITLE (Organization-wide)"
+else
+    OUTPUT_FILE="$OUTPUT_DIR/gcp_project_pci_req${REQUIREMENT_NUMBER}_report_$TIMESTAMP.html"
+    REPORT_TITLE="$REPORT_TITLE (Project-specific)"
+fi
 
-# Set output file path
-OUTPUT_FILE="${REPORT_DIR}/pci_req${REQUIREMENT_NUMBER}_report_$(date +%Y%m%d_%H%M%S).html"
+# Create reports directory if it doesn't exist
+mkdir -p "$OUTPUT_DIR"
 
-# Initialize HTML report using shared library
-initialize_report "$OUTPUT_FILE" "PCI DSS 4.0.1 - Requirement $REQUIREMENT_NUMBER Compliance Assessment Report" "${REQUIREMENT_NUMBER}"
-# Begin main assessment logic
+# Counters for checks
+total_checks=0
+passed_checks=0
+warning_checks=0
+failed_checks=0
+access_denied_checks=0
+
+# Get project and organization info based on scope
+if [ -n "$SPECIFIC_PROJECT" ]; then
+    DEFAULT_PROJECT="$SPECIFIC_PROJECT"
+else
+    DEFAULT_PROJECT=$(gcloud config get-value project 2>/dev/null)
+fi
+
+if [ -n "$SPECIFIC_ORG" ]; then
+    DEFAULT_ORG="$SPECIFIC_ORG"
+else
+    DEFAULT_ORG=$(gcloud organizations list --format="value(name)" --limit=1 2>/dev/null | sed 's/organizations\///')
+fi
+
+# Function to print colored output
+print_status() {
+    local color=$1
+    local message=$2
+    echo -e "${color}${message}${NC}"
+}
+
+# HTML functions now provided by gcp_html_report.sh framework library
+
+# Function to check GCP API access
+check_gcp_permission() {
+    local service=$1
+    local operation=$2
+    local test_command=$3
+    
+    print_status "INFO" "Checking $service $operation..."
+    
+    if eval "$test_command" &>/dev/null; then
+        print_status "PASS" "✓ $service $operation access verified"
+        return 0
+    else
+        print_status "FAIL" "✗ $service $operation access failed"
+        ((access_denied_checks++))
+        return 1
+    fi
+}
+
+# Function to build scope-aware gcloud commands
+build_gcloud_command() {
+    local base_command=$1
+    local project_override=$2
+    
+    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
+        if [ -n "$project_override" ]; then
+            echo "$base_command --project=$project_override"
+        else
+            echo "$base_command"
+        fi
+    else
+        echo "$base_command --project=$DEFAULT_PROJECT"
+    fi
+}
+
+# Function to get all VPC networks based on assessment scope
+get_all_networks() {
+    print_status "INFO" "Retrieving VPC networks for $ASSESSMENT_SCOPE scope..."
+    
+    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
+        # Get all projects in organization and their networks
+        PROJECTS=$(gcloud projects list --filter="parent.id:$DEFAULT_ORG" --format="value(projectId)" 2>/dev/null)
+        
+        if [ -z "$PROJECTS" ]; then
+            print_status "FAIL" "FAILED - No projects found in organization or access denied"
+            return 1
+        fi
+        
+        NETWORK_LIST=""
+        project_count=0
+        network_count=0
+        
+        for project in $PROJECTS; do
+            ((project_count++))
+            print_status "INFO" "  Checking project: $project"
+            
+            # Get networks for this project
+            project_networks=$(gcloud compute networks list --project="$project" --format="value(name)" 2>/dev/null)
+            
+            if [ -n "$project_networks" ]; then
+                # Prefix network names with project for organization scope
+                while IFS= read -r network; do
+                    if [ -n "$network" ]; then
+                        NETWORK_LIST="${NETWORK_LIST}${project}/${network}"$'\n'
+                        ((network_count++))
+                    fi
+                done <<< "$project_networks"
+            fi
+        done
+        
+        if [ $network_count -eq 0 ]; then
+            print_status "FAIL" "FAILED - No VPC networks found across $project_count projects"
+            return 1
+        else
+            print_status "PASS" "SUCCESS - Found $network_count VPC networks across $project_count projects"
+            echo "$NETWORK_LIST"
+            return 0
+        fi
+    else
+        # Project scope - get networks for current/specified project
+        NETWORK_LIST=$(gcloud compute networks list --project="$DEFAULT_PROJECT" --format="value(name)" 2>/dev/null)
+        
+        if [ -z "$NETWORK_LIST" ]; then
+            print_status "FAIL" "FAILED - No VPC networks found in project $DEFAULT_PROJECT or access denied"
+            return 1
+        else
+            network_count=$(echo "$NETWORK_LIST" | wc -l)
+            print_status "PASS" "SUCCESS - Found $network_count VPC networks in project $DEFAULT_PROJECT"
+            echo "$NETWORK_LIST"
+            return 0
+        fi
+    fi
+}
+
+# Validate scope and requirements
+if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
+    if [ -z "$DEFAULT_ORG" ]; then
+        print_status "FAIL" "Error: Organization scope requires an organization ID."
+        print_status "WARN" "Please provide organization ID with --org flag or ensure you have organization access."
+        exit 1
+    fi
+else
+    # Project scope validation
+    if [ -z "$DEFAULT_PROJECT" ]; then
+        print_status "FAIL" "Error: No project specified."
+        print_status "WARN" "Please set a default project with: gcloud config set project PROJECT_ID"
+        print_status "WARN" "Or specify a project with: --project PROJECT_ID"
+        exit 1
+    fi
+fi
+
+# Start script execution
+print_status "INFO" "============================================="
+print_status "INFO" "  PCI DSS 4.0.1 - Requirement 1 (GCP)"
+print_status "INFO" "============================================="
+echo ""
+
+# Display scope information
+print_status "INFO" "Assessment Scope: $ASSESSMENT_SCOPE"
+if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
+    print_status "INFO" "Organization: $DEFAULT_ORG"
+    print_status "WARN" "Note: Organization-wide assessment may take longer and requires broader permissions"
+else
+    print_status "INFO" "Project: $DEFAULT_PROJECT"
+fi
+echo ""
 
 # Ask for CDE networks
 read -p "Enter CDE VPC network names (comma-separated or 'all' for all networks): " CDE_NETWORKS
@@ -51,22 +236,42 @@ else
     print_status "WARN" "Checking specific networks: $CDE_NETWORKS"
 fi
 
-print_status "INFO" "============================================="
-print_status "INFO" "  PCI DSS 4.0.1 - Requirement 1 (GCP)"
-print_status "INFO" "============================================="
-echo ""
-
-# Display scope information using shared library - now handled in print_status calls
-print_status "INFO" "Assessment scope: ${ASSESSMENT_SCOPE:-project}"
-if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
-    print_status "INFO" "Organization ID: ${ORG_ID}"
-else
-    print_status "INFO" "Project ID: ${PROJECT_ID}"
-fi
+# Initialize HTML report using shared framework
+setup_assessment_scope
+initialize_report "$OUTPUT_FILE" "$REPORT_TITLE"
 
 echo ""
 echo "Starting assessment at $(date)"
 echo ""
+
+#----------------------------------------------------------------------
+# SECTION 1: PERMISSIONS CHECK
+#----------------------------------------------------------------------
+add_html_section "$OUTPUT_FILE" "GCP Permissions Check" "<p>Verifying access to required GCP services for PCI Requirement 1 assessment...</p>" "info"
+
+print_status "INFO" "=== CHECKING REQUIRED GCP PERMISSIONS ==="
+
+# Check all required permissions based on scope
+if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
+    # Organization-wide permission checks
+    check_gcp_permission "Projects" "list" "gcloud projects list --filter='parent.id:$DEFAULT_ORG' --limit=1"
+    ((total_checks++))
+    
+    check_gcp_permission "Organizations" "access" "gcloud organizations list --filter='name:organizations/$DEFAULT_ORG' --limit=1"
+    ((total_checks++))
+fi
+
+# Scope-aware permission checks
+PROJECT_FLAG=""
+if [ "$ASSESSMENT_SCOPE" == "project" ]; then
+    PROJECT_FLAG="--project=$DEFAULT_PROJECT"
+fi
+
+check_gcp_permission "Compute Engine" "networks" "gcloud compute networks list $PROJECT_FLAG --limit=1"
+((total_checks++))
+
+check_gcp_permission "Compute Engine" "firewalls" "gcloud compute firewall-rules list $PROJECT_FLAG --limit=1"
+((total_checks++))
 
 check_gcp_permission "Compute Engine" "instances" "gcloud compute instances list $PROJECT_FLAG --limit=1"
 ((total_checks++))
@@ -621,18 +826,15 @@ add_html_section "$OUTPUT_FILE" "1.5.1 - Firewall rule management" "$rule_manage
 #----------------------------------------------------------------------
 # FINAL REPORT
 #----------------------------------------------------------------------
+finalize_report "$OUTPUT_FILE" "$total_checks" "$passed_checks" "$failed_checks" "$warning_checks"
 
-# Add final summary metrics
-add_summary_metrics "$OUTPUT_FILE" "$total_checks" "$passed_checks" "$failed_checks" "$warning_checks"
-
-# Finalize HTML report using shared library
-finalize_report "$OUTPUT_FILE" "${REQUIREMENT_NUMBER}"
-
-# Display final summary using shared library
-print_status "INFO" "=== ASSESSMENT SUMMARY ==="
-print_status "INFO" "Total checks: $total_checks"
-print_status "PASS" "Passed: $passed_checks"
-print_status "FAIL" "Failed: $failed_checks"
-print_status "WARN" "Warnings: $warning_checks"
+echo ""
+print_status "PASS" "======================= ASSESSMENT SUMMARY ======================="
+echo "Total checks performed: $total_checks"
+echo "Passed checks: $passed_checks"
+echo "Failed checks: $failed_checks"
+echo "Warning checks: $warning_checks"
+print_status "PASS" "=================================================================="
+echo ""
 print_status "INFO" "Report has been generated: $OUTPUT_FILE"
 print_status "PASS" "=================================================================="
