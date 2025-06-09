@@ -5,315 +5,68 @@
 # Requirements covered: 3.2 - 3.7 (Protect Stored Account Data)
 # Requirement 3.1 removed - requires manual verification
 
-# Set output colors for terminal
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+# Load shared libraries
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIB_DIR="$SCRIPT_DIR/lib"
 
-# Variables for scope control
-ASSESSMENT_SCOPE="project"  # Default to project scope
-SPECIFIC_PROJECT=""
-SPECIFIC_ORG=""
+source "$LIB_DIR/gcp_common.sh" || exit 1
+source "$LIB_DIR/gcp_permissions.sh" || exit 1
+source "$LIB_DIR/gcp_scope_mgmt.sh" || exit 1
+source "$LIB_DIR/gcp_html_report.sh" || exit 1
 
-# Function to show help
-show_help() {
-    echo "GCP PCI DSS Requirement 3 Assessment Script"
-    echo "==========================================="
-    echo ""
-    echo "Usage: $0 [OPTIONS]"
-    echo ""
-    echo "Options:"
-    echo "  -s, --scope SCOPE          Assessment scope: 'project' or 'organization' (default: project)"
-    echo "  -p, --project PROJECT_ID   Specific project to assess (overrides current gcloud config)"
-    echo "  -o, --org ORG_ID          Specific organization ID to assess (required for organization scope)"
-    echo "  -h, --help                Show this help message"
-    echo ""
-    echo "Examples:"
-    echo "  $0                                    # Assess current project"
-    echo "  $0 --scope project --project my-proj # Assess specific project" 
-    echo "  $0 --scope organization --org 123456 # Assess entire organization"
-    echo ""
-    echo "Note: Organization scope requires appropriate permissions across all projects in the organization."
-}
-
-# Parse command line arguments
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        -s|--scope)
-            ASSESSMENT_SCOPE="$2"
-            if [[ "$ASSESSMENT_SCOPE" != "project" && "$ASSESSMENT_SCOPE" != "organization" ]]; then
-                echo "Error: Scope must be 'project' or 'organization'"
-                exit 1
-            fi
-            shift 2
-            ;;
-        -p|--project)
-            SPECIFIC_PROJECT="$2"
-            shift 2
-            ;;
-        -o|--org)
-            SPECIFIC_ORG="$2"
-            shift 2
-            ;;
-        -h|--help)
-            show_help
-            exit 0
-            ;;
-        *)
-            echo "Unknown option: $1"
-            show_help
-            exit 1
-            ;;
-    esac
-done
-
-# Define variables
+# Script-specific variables
 REQUIREMENT_NUMBER="3"
-REPORT_TITLE="PCI DSS 4.0.1 - Requirement $REQUIREMENT_NUMBER Compliance Assessment Report (GCP)"
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-OUTPUT_DIR="./reports"
 
-# Set scope-specific variables
-if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-    OUTPUT_FILE="$OUTPUT_DIR/gcp_org_pci_req${REQUIREMENT_NUMBER}_report_$TIMESTAMP.html"
-    REPORT_TITLE="$REPORT_TITLE (Organization-wide)"
-else
-    OUTPUT_FILE="$OUTPUT_DIR/gcp_project_pci_req${REQUIREMENT_NUMBER}_report_$TIMESTAMP.html"
-    REPORT_TITLE="$REPORT_TITLE (Project-specific)"
-fi
+# Initialize environment
+setup_environment || exit 1
 
-# Create reports directory if it doesn't exist
-mkdir -p "$OUTPUT_DIR"
+# Parse command line arguments using shared function
+parse_common_arguments "$@"
+case $? in
+    1) exit 1 ;;  # Error
+    2) exit 0 ;;  # Help displayed
+esac
+# Setup report configuration using shared library
+load_requirement_config "${REQUIREMENT_NUMBER}"
 
-# Counters for checks
-total_checks=0
-passed_checks=0
-warning_checks=0
-failed_checks=0
-access_denied_checks=0
+# Validate scope and setup project context using shared library
+setup_assessment_scope || exit 1
 
-# Get project and organization info based on scope
-if [ -n "$SPECIFIC_PROJECT" ]; then
-    DEFAULT_PROJECT="$SPECIFIC_PROJECT"
-else
-    DEFAULT_PROJECT=$(gcloud config get-value project 2>/dev/null)
-fi
+# Check permissions using shared library
+check_required_permissions "storage.buckets.list" "sql.instances.list" "cloudkms.keyRings.list" || exit 1
 
-if [ -n "$SPECIFIC_ORG" ]; then
-    DEFAULT_ORG="$SPECIFIC_ORG"
-else
-    DEFAULT_ORG=$(gcloud organizations list --format="value(name)" --limit=1 2>/dev/null | sed 's/organizations\///')
-fi
+# Set output file path
+OUTPUT_FILE="${REPORT_DIR}/pci_req${REQUIREMENT_NUMBER}_report_$(date +%Y%m%d_%H%M%S).html"
 
-# Function to print colored output
-print_status() {
-    local color=$1
-    local message=$2
-    echo -e "${color}${message}${NC}"
-}
+# Initialize HTML report using shared library
+initialize_report "$OUTPUT_FILE" "PCI DSS 4.0.1 - Requirement $REQUIREMENT_NUMBER Compliance Assessment Report" "${REQUIREMENT_NUMBER}"
+# Begin main assessment logic
 
-# Function to add HTML report sections
-add_html_section() {
-    local file=$1
-    local title=$2
-    local content=$3
-    local status=$4
-    
-    cat >> "$file" << EOF
-<div class="check-item $status">
-    <h3>$title</h3>
-    <div class="content">$content</div>
-</div>
-EOF
-}
 
-# Function to initialize HTML report
-initialize_html_report() {
-    local file=$1
-    local title=$2
-    
-    cat > "$file" << EOF
-<!DOCTYPE html>
-<html>
-<head>
-    <title>$title</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .header { background: #2e7d32; color: white; padding: 20px; border-radius: 5px; }
-        .summary { background: #f5f5f5; padding: 15px; margin: 20px 0; border-radius: 5px; }
-        .check-item { margin: 20px 0; padding: 15px; border-radius: 5px; border-left: 5px solid; }
-        .pass { background: #e8f5e8; border-color: #4caf50; }
-        .fail { background: #ffebee; border-color: #f44336; }
-        .warning { background: #fff3e0; border-color: #ff9800; }
-        .info { background: #e3f2fd; border-color: #2196f3; }
-        .red { color: #f44336; font-weight: bold; }
-        .green { color: #4caf50; font-weight: bold; }
-        .yellow { color: #ff9800; font-weight: bold; }
-        pre { background: #f5f5f5; padding: 10px; border-radius: 3px; overflow-x: auto; }
-        ul { margin: 10px 0; }
-        li { margin: 5px 0; }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>$title</h1>
-        <p>Generated on: $(date)</p>
-        <p>Assessment Scope: $ASSESSMENT_SCOPE</p>
-        <p>Project: ${DEFAULT_PROJECT:-Not specified}</p>
-        <p>Organization: ${DEFAULT_ORG:-Not available}</p>
-    </div>
-EOF
-}
-
-# Function to finalize HTML report
-finalize_html_report() {
-    local file=$1
-    local total=$2
-    local passed=$3
-    local failed=$4
-    local warnings=$5
-    
-    local pass_percentage=0
-    if [ $total -gt 0 ]; then
-        pass_percentage=$(( (passed * 100) / total ))
-    fi
-    
-    cat >> "$file" << EOF
-    <div class="summary">
-        <h2>Assessment Summary</h2>
-        <p><strong>Total Checks:</strong> $total</p>
-        <p><strong>Passed:</strong> <span class="green">$passed</span></p>
-        <p><strong>Failed:</strong> <span class="red">$failed</span></p>
-        <p><strong>Warnings:</strong> <span class="yellow">$warnings</span></p>
-        <p><strong>Success Rate:</strong> $pass_percentage%</p>
-    </div>
-</body>
-</html>
-EOF
-}
-
-# Function to check GCP API access
-check_gcp_permission() {
-    local service=$1
-    local operation=$2
-    local test_command=$3
-    
-    print_status $CYAN "Checking $service $operation..."
-    
-    if eval "$test_command" &>/dev/null; then
-        print_status $GREEN "✓ $service $operation access verified"
-        return 0
-    else
-        print_status $RED "✗ $service $operation access failed"
-        ((access_denied_checks++))
-        return 1
-    fi
-}
-
-# Function to build scope-aware gcloud commands
-build_gcloud_command() {
-    local base_command=$1
-    local project_override=$2
-    
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        if [ -n "$project_override" ]; then
-            echo "$base_command --project=$project_override"
-        else
-            echo "$base_command"
-        fi
-    else
-        echo "$base_command --project=$DEFAULT_PROJECT"
-    fi
-}
-
-# Function to get all projects in scope
-get_projects_in_scope() {
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        gcloud projects list --filter="parent.id:$DEFAULT_ORG" --format="value(projectId)" 2>/dev/null
-    else
-        echo "$DEFAULT_PROJECT"
-    fi
-}
-
-# Function to run command across all projects in scope
-run_across_projects() {
-    local base_command=$1
-    local format_option=$2
-    
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        local projects=$(get_projects_in_scope)
-        local results=""
-        
-        for project in $projects; do
-            local cmd=$(build_gcloud_command "$base_command" "$project")
-            if [ -n "$format_option" ]; then
-                cmd="$cmd $format_option"
-            fi
-            
-            local project_results=$(eval "$cmd" 2>/dev/null)
-            if [ -n "$project_results" ]; then
-                # Prefix results with project name for organization scope
-                while IFS= read -r line; do
-                    if [ -n "$line" ]; then
-                        results="${results}${project}/${line}"$'\n'
-                    fi
-                done <<< "$project_results"
-            fi
-        done
-        
-        echo "$results"
-    else
-        local cmd=$(build_gcloud_command "$base_command")
-        if [ -n "$format_option" ]; then
-            cmd="$cmd $format_option"
-        fi
-        eval "$cmd" 2>/dev/null
-    fi
-}
-
-# Validate scope and requirements
-if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-    if [ -z "$DEFAULT_ORG" ]; then
-        print_status $RED "Error: Organization scope requires an organization ID."
-        print_status $YELLOW "Please provide organization ID with --org flag or ensure you have organization access."
-        exit 1
-    fi
-else
-    # Project scope validation
-    if [ -z "$DEFAULT_PROJECT" ]; then
-        print_status $RED "Error: No project specified."
-        print_status $YELLOW "Please set a default project with: gcloud config set project PROJECT_ID"
-        print_status $YELLOW "Or specify a project with: --project PROJECT_ID"
-        exit 1
-    fi
-fi
-
-# Start script execution
-print_status $BLUE "============================================="
-print_status $BLUE "  PCI DSS 4.0.1 - Requirement 3 (GCP)"
-print_status $BLUE "============================================="
+print_status "INFO" "============================================="
+print_status "INFO" "  PCI DSS 4.0.1 - Requirement 3 (GCP)"
+print_status "INFO" "============================================="
 echo ""
 
-# Display scope information
-print_status $CYAN "Assessment Scope: $ASSESSMENT_SCOPE"
-if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-    print_status $CYAN "Organization: $DEFAULT_ORG"
-    print_status $YELLOW "Note: Organization-wide assessment may take longer and requires broader permissions"
+# Display scope information using shared library - now handled in print_status calls
+print_status "INFO" "Assessment scope: ${ASSESSMENT_SCOPE:-project}"
+if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
+    print_status "INFO" "Organization ID: ${ORG_ID}"
 else
-    print_status $CYAN "Project: $DEFAULT_PROJECT"
+    print_status "INFO" "Project ID: ${PROJECT_ID}"
 fi
+
+echo ""
+echo "Starting assessment at $(date)"
 echo ""
 
 # Ask for specific resources to assess
 read -p "Enter specific resource types to assess (comma-separated: sql,storage,kms,compute or 'all' for all): " TARGET_RESOURCES
 if [ -z "$TARGET_RESOURCES" ] || [ "$TARGET_RESOURCES" == "all" ]; then
-    print_status $YELLOW "Checking all resource types"
+    print_status "WARN" "Checking all resource types"
     TARGET_RESOURCES="all"
 else
-    print_status $YELLOW "Checking specific resources: $TARGET_RESOURCES"
+    print_status "WARN" "Checking specific resources: $TARGET_RESOURCES"
 fi
 
 # Initialize HTML report
@@ -322,68 +75,6 @@ initialize_html_report "$OUTPUT_FILE" "$REPORT_TITLE"
 echo ""
 echo "Starting assessment at $(date)"
 echo ""
-
-#----------------------------------------------------------------------
-# SECTION 1: PERMISSIONS CHECK
-#----------------------------------------------------------------------
-add_html_section "$OUTPUT_FILE" "GCP Permissions Check" "<p>Verifying access to required GCP services for PCI Requirement 3 assessment...</p>" "info"
-
-print_status $CYAN "=== CHECKING REQUIRED GCP PERMISSIONS ==="
-
-# Check all required permissions based on scope
-if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-    # Organization-wide permission checks
-    check_gcp_permission "Projects" "list" "gcloud projects list --filter='parent.id:$DEFAULT_ORG' --limit=1"
-    ((total_checks++))
-    
-    check_gcp_permission "Organizations" "access" "gcloud organizations list --filter='name:organizations/$DEFAULT_ORG' --limit=1"
-    ((total_checks++))
-fi
-
-# Scope-aware permission checks
-PROJECT_FLAG=""
-if [ "$ASSESSMENT_SCOPE" == "project" ]; then
-    PROJECT_FLAG="--project=$DEFAULT_PROJECT"
-fi
-
-check_gcp_permission "Cloud SQL" "instances" "gcloud sql instances list $PROJECT_FLAG --limit=1"
-((total_checks++))
-
-check_gcp_permission "Cloud Storage" "buckets" "gsutil ls $PROJECT_FLAG 2>/dev/null | head -1"
-((total_checks++))
-
-check_gcp_permission "Compute Engine" "instances" "gcloud compute instances list $PROJECT_FLAG --limit=1"
-((total_checks++))
-
-check_gcp_permission "Cloud KMS" "keys" "gcloud kms keyrings list --location=global $PROJECT_FLAG --limit=1"
-((total_checks++))
-
-check_gcp_permission "Cloud Logging" "logs" "gcloud logging logs list $PROJECT_FLAG --limit=1"
-((total_checks++))
-
-check_gcp_permission "IAM" "service-accounts" "gcloud iam service-accounts list $PROJECT_FLAG --limit=1"
-((total_checks++))
-
-# Calculate permissions percentage
-available_permissions=$((total_checks - access_denied_checks))
-if [ $available_permissions -gt 0 ]; then
-    permissions_percentage=$(( ((total_checks - access_denied_checks) * 100) / total_checks ))
-else
-    permissions_percentage=0
-fi
-
-if [ $permissions_percentage -lt 70 ]; then
-    print_status $RED "WARNING: Insufficient permissions to perform a complete PCI Requirement 3 assessment."
-    add_html_section "$OUTPUT_FILE" "Permission Assessment" "<p class='red'>Insufficient permissions detected. Only $permissions_percentage% of required permissions are available.</p><p>Without these permissions, the assessment will be incomplete and may not accurately reflect your PCI DSS compliance status.</p>" "fail"
-    read -p "Continue with limited assessment? (y/n): " CONTINUE
-    if [[ ! $CONTINUE =~ ^[Yy]$ ]]; then
-        echo "Assessment aborted."
-        exit 1
-    fi
-else
-    print_status $GREEN "Permission check complete: $permissions_percentage% permissions available"
-    add_html_section "$OUTPUT_FILE" "Permission Assessment" "<p class='green'>Sufficient permissions detected. $permissions_percentage% of required permissions are available.</p>" "pass"
-fi
 
 # Reset counters for actual compliance checks
 total_checks=0
@@ -396,7 +87,7 @@ failed_checks=0
 #----------------------------------------------------------------------
 add_html_section "$OUTPUT_FILE" "Target Resources" "<p>Identifying target resources for assessment...</p>" "info"
 
-print_status $CYAN "=== IDENTIFYING TARGET RESOURCES ==="
+print_status "INFO" "=== IDENTIFYING TARGET RESOURCES ==="
 
 # Initialize resource arrays
 declare -a SQL_INSTANCES=()
@@ -406,46 +97,46 @@ declare -a KMS_KEYRINGS=()
 
 # Retrieve resources based on user input and scope
 if [ "$TARGET_RESOURCES" == "all" ] || [[ "$TARGET_RESOURCES" == *"sql"* ]]; then
-    print_status $CYAN "Retrieving Cloud SQL instances..."
-    SQL_INSTANCE_LIST=$(run_across_projects "gcloud sql instances list" "--format=value(name)")
+    print_status "INFO" "Retrieving Cloud SQL instances..."
+    SQL_INSTANCE_LIST=$(run_gcp_command_across_projects "gcloud sql instances list" "--format=value(name)")
     if [ -n "$SQL_INSTANCE_LIST" ]; then
         readarray -t SQL_INSTANCES <<< "$SQL_INSTANCE_LIST"
-        print_status $GREEN "Found ${#SQL_INSTANCES[@]} Cloud SQL instances"
+        print_status "PASS" "Found ${#SQL_INSTANCES[@]} Cloud SQL instances"
     else
-        print_status $YELLOW "No Cloud SQL instances found or access denied"
+        print_status "WARN" "No Cloud SQL instances found or access denied"
     fi
 fi
 
 if [ "$TARGET_RESOURCES" == "all" ] || [[ "$TARGET_RESOURCES" == *"storage"* ]]; then
-    print_status $CYAN "Retrieving Cloud Storage buckets..."
+    print_status "INFO" "Retrieving Cloud Storage buckets..."
     STORAGE_BUCKET_LIST=$(gsutil ls 2>/dev/null | sed 's|gs://||' | sed 's|/$||')
     if [ -n "$STORAGE_BUCKET_LIST" ]; then
         readarray -t STORAGE_BUCKETS <<< "$STORAGE_BUCKET_LIST"
-        print_status $GREEN "Found ${#STORAGE_BUCKETS[@]} Cloud Storage buckets"
+        print_status "PASS" "Found ${#STORAGE_BUCKETS[@]} Cloud Storage buckets"
     else
-        print_status $YELLOW "No Cloud Storage buckets found or access denied"
+        print_status "WARN" "No Cloud Storage buckets found or access denied"
     fi
 fi
 
 if [ "$TARGET_RESOURCES" == "all" ] || [[ "$TARGET_RESOURCES" == *"compute"* ]]; then
-    print_status $CYAN "Retrieving Compute Engine instances..."
-    COMPUTE_INSTANCE_LIST=$(run_across_projects "gcloud compute instances list" "--format=value(name)")
+    print_status "INFO" "Retrieving Compute Engine instances..."
+    COMPUTE_INSTANCE_LIST=$(run_gcp_command_across_projects "gcloud compute instances list" "--format=value(name)")
     if [ -n "$COMPUTE_INSTANCE_LIST" ]; then
         readarray -t COMPUTE_INSTANCES <<< "$COMPUTE_INSTANCE_LIST"
-        print_status $GREEN "Found ${#COMPUTE_INSTANCES[@]} Compute Engine instances"
+        print_status "PASS" "Found ${#COMPUTE_INSTANCES[@]} Compute Engine instances"
     else
-        print_status $YELLOW "No Compute Engine instances found or access denied"
+        print_status "WARN" "No Compute Engine instances found or access denied"
     fi
 fi
 
 if [ "$TARGET_RESOURCES" == "all" ] || [[ "$TARGET_RESOURCES" == *"kms"* ]]; then
-    print_status $CYAN "Retrieving Cloud KMS keyrings..."
-    KMS_KEYRING_LIST=$(run_across_projects "gcloud kms keyrings list --location=global" "--format=value(name)")
+    print_status "INFO" "Retrieving Cloud KMS keyrings..."
+    KMS_KEYRING_LIST=$(run_gcp_command_across_projects "gcloud kms keyrings list --location=global" "--format=value(name)")
     if [ -n "$KMS_KEYRING_LIST" ]; then
         readarray -t KMS_KEYRINGS <<< "$KMS_KEYRING_LIST"
-        print_status $GREEN "Found ${#KMS_KEYRINGS[@]} Cloud KMS keyrings"
+        print_status "PASS" "Found ${#KMS_KEYRINGS[@]} Cloud KMS keyrings"
     else
-        print_status $YELLOW "No Cloud KMS keyrings found or access denied"
+        print_status "WARN" "No Cloud KMS keyrings found or access denied"
     fi
 fi
 
@@ -458,13 +149,13 @@ add_html_section "$OUTPUT_FILE" "Resource Identification" "Assessment will inclu
 #----------------------------------------------------------------------
 # SECTION 3: PCI REQUIREMENT 3.2 - STORAGE OF ACCOUNT DATA
 #----------------------------------------------------------------------
-print_status $CYAN "=== PCI REQUIREMENT 3.2: STORAGE OF ACCOUNT DATA ===" 
+print_status "INFO" "=== PCI REQUIREMENT 3.2: STORAGE OF ACCOUNT DATA ===" 
 
 add_html_section "$OUTPUT_FILE" "Requirement 3.2: Storage of account data is kept to a minimum" "<p>Analyzing data retention and lifecycle policies...</p>" "info"
 
 # Check for Cloud Storage lifecycle policies
-print_status $BLUE "3.2.1 - Cloud Storage lifecycle policies"
-print_status $CYAN "Checking Cloud Storage buckets for lifecycle policies..."
+print_status "INFO" "3.2.1 - Cloud Storage lifecycle policies"
+print_status "INFO" "Checking Cloud Storage buckets for lifecycle policies..."
 
 storage_with_lifecycle=0
 storage_without_lifecycle=0
@@ -472,16 +163,16 @@ storage_without_lifecycle=0
 for bucket in "${STORAGE_BUCKETS[@]}"; do
     if [ -z "$bucket" ]; then continue; fi
     
-    print_status $CYAN "Checking lifecycle policy for bucket: $bucket"
+    print_status "INFO" "Checking lifecycle policy for bucket: $bucket"
     LIFECYCLE=$(gsutil lifecycle get "gs://$bucket" 2>&1)
     
     if [[ $LIFECYCLE == *"has no lifecycle configuration"* ]]; then
-        print_status $YELLOW "No lifecycle policy found for bucket: $bucket"
+        print_status "WARN" "No lifecycle policy found for bucket: $bucket"
         ((storage_without_lifecycle++))
     elif [[ $LIFECYCLE == *"AccessDenied"* ]]; then
-        print_status $RED "Access denied when checking lifecycle policy for bucket: $bucket"
+        print_status "FAIL" "Access denied when checking lifecycle policy for bucket: $bucket"
     else
-        print_status $GREEN "Lifecycle policy found for bucket: $bucket"
+        print_status "PASS" "Lifecycle policy found for bucket: $bucket"
         ((storage_with_lifecycle++))
     fi
 done
@@ -517,14 +208,14 @@ fi
 #----------------------------------------------------------------------
 # SECTION 4: PCI REQUIREMENT 3.3 - DATABASE LOGGING CHECKS
 #----------------------------------------------------------------------
-print_status $CYAN "=== PCI REQUIREMENT 3.3: DATABASE LOGGING CHECKS ==="
+print_status "INFO" "=== PCI REQUIREMENT 3.3: DATABASE LOGGING CHECKS ==="
 
 add_html_section "$OUTPUT_FILE" "Requirement 3.3: Database logging configuration checks" "<p>Analyzing database logging configurations for sensitive data exposure...</p>" "info"
 
 # Check for Cloud SQL database logging configurations
 if [ ${#SQL_INSTANCES[@]} -gt 0 ]; then
-    print_status $BLUE "3.3.1 - Cloud SQL logging configuration"
-    print_status $CYAN "Checking Cloud SQL instances for potential issues with sensitive data logging..."
+    print_status "INFO" "3.3.1 - Cloud SQL logging configuration"
+    print_status "INFO" "Checking Cloud SQL instances for potential issues with sensitive data logging..."
     
     for instance in "${SQL_INSTANCES[@]}"; do
         if [ -z "$instance" ]; then continue; fi
@@ -576,13 +267,13 @@ fi
 #----------------------------------------------------------------------
 # SECTION 5: PCI REQUIREMENT 3.5 - PAN SECURITY
 #----------------------------------------------------------------------
-print_status $CYAN "=== PCI REQUIREMENT 3.5: PAN SECURITY ==="
+print_status "INFO" "=== PCI REQUIREMENT 3.5: PAN SECURITY ==="
 
 add_html_section "$OUTPUT_FILE" "Requirement 3.5: Primary account number (PAN) is secured wherever it is stored" "<p>Analyzing encryption and security controls for PAN protection...</p>" "info"
 
 # Check for Cloud KMS key usage
-print_status $BLUE "3.5.1 - Cloud KMS encryption key availability"
-print_status $CYAN "Checking Cloud KMS key usage..."
+print_status "INFO" "3.5.1 - Cloud KMS encryption key availability"
+print_status "INFO" "Checking Cloud KMS key usage..."
 
 KMS_KEYS_LIST=()
 if [ ${#KMS_KEYRINGS[@]} -gt 0 ]; then
@@ -651,8 +342,8 @@ else
 fi
 
 # Check Compute Engine disk encryption
-print_status $BLUE "3.5.1 - Compute Engine disk encryption"
-print_status $CYAN "Checking Compute Engine disk encryption..."
+print_status "INFO" "3.5.1 - Compute Engine disk encryption"
+print_status "INFO" "Checking Compute Engine disk encryption..."
 
 ENCRYPTED_DISKS=0
 UNENCRYPTED_DISKS=0
@@ -705,8 +396,8 @@ if [ $TOTAL_DISKS -gt 0 ]; then
 fi
 
 # Check Cloud SQL encryption
-print_status $BLUE "3.5.1 - Cloud SQL encryption"
-print_status $CYAN "Checking Cloud SQL instance encryption..."
+print_status "INFO" "3.5.1 - Cloud SQL encryption"
+print_status "INFO" "Checking Cloud SQL instance encryption..."
 
 ENCRYPTED_SQL=0
 UNENCRYPTED_SQL=0
@@ -770,13 +461,13 @@ fi
 #----------------------------------------------------------------------
 # SECTION 6: PCI REQUIREMENT 3.6 - CRYPTOGRAPHIC KEY SECURITY
 #----------------------------------------------------------------------
-print_status $CYAN "=== PCI REQUIREMENT 3.6: CRYPTOGRAPHIC KEY SECURITY ==="
+print_status "INFO" "=== PCI REQUIREMENT 3.6: CRYPTOGRAPHIC KEY SECURITY ==="
 
 add_html_section "$OUTPUT_FILE" "Requirement 3.6: Cryptographic keys used to protect stored account data are secured" "<p>Analyzing cryptographic key protection mechanisms...</p>" "info"
 
 # Check Cloud KMS key policies and IAM
-print_status $BLUE "3.6.1 - Cloud KMS key protection procedures"
-print_status $CYAN "Checking Cloud KMS key policies and access controls..."
+print_status "INFO" "3.6.1 - Cloud KMS key protection procedures"
+print_status "INFO" "Checking Cloud KMS key policies and access controls..."
 
 key_protection_details="<h4>Analysis of Cloud KMS Key Protection</h4><ul>"
 
@@ -850,13 +541,13 @@ fi
 #----------------------------------------------------------------------
 # SECTION 7: PCI REQUIREMENT 3.7 - KEY MANAGEMENT
 #----------------------------------------------------------------------
-print_status $CYAN "=== PCI REQUIREMENT 3.7: KEY MANAGEMENT ==="
+print_status "INFO" "=== PCI REQUIREMENT 3.7: KEY MANAGEMENT ==="
 
 add_html_section "$OUTPUT_FILE" "Requirement 3.7: Where cryptography is used to protect stored account data, key management processes and procedures covering all aspects of the key lifecycle are defined and implemented" "<p>Analyzing key management lifecycle procedures...</p>" "info"
 
 # Check Cloud KMS key generation capabilities
-print_status $BLUE "3.7.1 - Strong key generation"
-print_status $CYAN "Checking Cloud KMS key generation capabilities..."
+print_status "INFO" "3.7.1 - Strong key generation"
+print_status "INFO" "Checking Cloud KMS key generation capabilities..."
 
 key_generation_details="<h4>Analysis of Cryptographic Key Generation</h4>"
 
@@ -927,8 +618,8 @@ add_html_section "$OUTPUT_FILE" "3.7.3 - Secure Key Storage" "<p>Automated asses
 ((warning_checks++))
 
 # Requirement 3.7.4 - Key Cryptoperiod
-print_status $BLUE "3.7.4 - Key cryptoperiod and rotation"
-print_status $CYAN "Checking key rotation configurations..."
+print_status "INFO" "3.7.4 - Key cryptoperiod and rotation"
+print_status "INFO" "Checking key rotation configurations..."
 
 rotated_count=0
 non_rotated_count=0
@@ -1021,11 +712,11 @@ add_html_section "$OUTPUT_FILE" "3.7.7 - Prevention of Unauthorized Key Substitu
 ((warning_checks++))
 
 # Requirement 3.7.8 - Key Custodian Acknowledgment
-print_status $BLUE "3.7.8 - Key custodian acknowledgment"
-print_status $CYAN "Checking for IAM roles that might be used for key custodians..."
+print_status "INFO" "3.7.8 - Key custodian acknowledgment"
+print_status "INFO" "Checking for IAM roles that might be used for key custodians..."
 
 # Check for IAM roles that might be used for key custodians
-key_custodian_roles=$(run_across_projects "gcloud projects get-iam-policy" "--format=json" | grep -E "(cloudkms|crypto|key|custodian)" | wc -l)
+key_custodian_roles=$(run_gcp_command_across_projects "gcloud projects get-iam-policy" "--format=json" | grep -E "(cloudkms|crypto|key|custodian)" | wc -l)
 
 custodian_details=""
 if [ $key_custodian_roles -gt 0 ]; then
@@ -1046,7 +737,7 @@ $custodian_details
 finalize_html_report "$OUTPUT_FILE" "$total_checks" "$passed_checks" "$failed_checks" "$warning_checks"
 
 echo ""
-print_status $GREEN "======================= ASSESSMENT SUMMARY ======================="
+print_status "PASS" "======================= ASSESSMENT SUMMARY ======================="
 
 compliance_percentage=0
 if [ $((total_checks - warning_checks)) -gt 0 ]; then
@@ -1078,14 +769,21 @@ summary="<p>A total of $total_checks checks were performed:</p>
 
 add_html_section "$OUTPUT_FILE" "Assessment Summary" "$summary" "info"
 
-print_status $GREEN "=================================================================="
-echo ""
-print_status $CYAN "Report has been generated: $OUTPUT_FILE"
-print_status $GREEN "=================================================================="
+#----------------------------------------------------------------------
+# FINAL REPORT
+#----------------------------------------------------------------------
 
-# Open the HTML report in the default browser if on macOS
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    open "$OUTPUT_FILE" 2>/dev/null || echo "Could not automatically open the report. Please open it manually."
-else
-    echo "Please open the HTML report in your web browser to view detailed results."
-fi
+# Add final summary metrics
+add_summary_metrics "$OUTPUT_FILE" "$total_checks" "$passed_checks" "$failed_checks" "$warning_checks"
+
+# Finalize HTML report using shared library
+finalize_report "$OUTPUT_FILE" "${REQUIREMENT_NUMBER}"
+
+# Display final summary using shared library
+print_status "INFO" "=== ASSESSMENT SUMMARY ==="
+print_status "INFO" "Total checks: $total_checks"
+print_status "PASS" "Passed: $passed_checks"
+print_status "FAIL" "Failed: $failed_checks"
+print_status "WARN" "Warnings: $warning_checks"
+print_status "INFO" "Report has been generated: $OUTPUT_FILE"
+print_status "PASS" "=================================================================="

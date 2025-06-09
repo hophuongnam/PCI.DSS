@@ -3,279 +3,78 @@
 # PCI DSS Requirement 7 Compliance Check Script for GCP
 # Restrict Access to System Components and Cardholder Data by Business Need to Know
 
-# Set output colors for terminal
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+# Load shared libraries
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIB_DIR="$SCRIPT_DIR/lib"
 
-# Variables for scope control
-ASSESSMENT_SCOPE="project"  # Default to project scope
-SPECIFIC_PROJECT=""
-SPECIFIC_ORG=""
+source "$LIB_DIR/gcp_common.sh" || exit 1
+source "$LIB_DIR/gcp_permissions.sh" || exit 1
+source "$LIB_DIR/gcp_scope_mgmt.sh" || exit 1
+source "$LIB_DIR/gcp_html_report.sh" || exit 1
+
+# Script-specific variables
 REQUIREMENT_NUMBER="7"
 
-# Function to show help
-show_help() {
-    echo "GCP PCI DSS Requirement $REQUIREMENT_NUMBER Assessment Script"
-    echo "==============================================="
-    echo ""
-    echo "Usage: $0 [OPTIONS]"
-    echo ""
-    echo "Options:"
-    echo "  -s, --scope SCOPE          Assessment scope: 'project' or 'organization' (default: project)"
-    echo "  -p, --project PROJECT_ID   Specific project to assess (overrides current gcloud config)"
-    echo "  -o, --org ORG_ID          Specific organization ID to assess (required for organization scope)"
-    echo "  -h, --help                Show this help message"
-    echo ""
-    echo "Examples:"
-    echo "  $0                                    # Assess current project"
-    echo "  $0 --scope project --project my-proj # Assess specific project" 
-    echo "  $0 --scope organization --org 123456 # Assess entire organization"
-    echo ""
-    echo "Note: Organization scope requires appropriate permissions across all projects in the organization."
-}
+# Initialize environment
+setup_environment || exit 1
 
-# Parse command line arguments
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        -s|--scope)
-            ASSESSMENT_SCOPE="$2"
-            if [[ "$ASSESSMENT_SCOPE" != "project" && "$ASSESSMENT_SCOPE" != "organization" ]]; then
-                echo "Error: Scope must be 'project' or 'organization'"
-                exit 1
-            fi
-            shift 2
-            ;;
-        -p|--project)
-            SPECIFIC_PROJECT="$2"
-            shift 2
-            ;;
-        -o|--org)
-            SPECIFIC_ORG="$2"
-            shift 2
-            ;;
-        -h|--help)
-            show_help
-            exit 0
-            ;;
-        *)
-            echo "Unknown option: $1"
-            show_help
-            exit 1
-            ;;
-    esac
-done
+# Parse command line arguments using shared function
+parse_common_arguments "$@"
+case $? in
+    1) exit 1 ;;  # Error
+    2) exit 0 ;;  # Help displayed
+esac
 
-# Define variables
-REPORT_TITLE="PCI DSS 4.0.1 - Requirement $REQUIREMENT_NUMBER Compliance Assessment Report (GCP)"
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-OUTPUT_DIR="./reports"
+# Setup report configuration using shared library
+load_requirement_config "${REQUIREMENT_NUMBER}"
 
-# Set scope-specific variables
-if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-    OUTPUT_FILE="$OUTPUT_DIR/gcp_org_pci_req${REQUIREMENT_NUMBER}_report_$TIMESTAMP.html"
-    REPORT_TITLE="$REPORT_TITLE (Organization-wide)"
+# Validate scope and setup project context using shared library
+setup_assessment_scope || exit 1
+
+# Check permissions using shared library
+check_required_permissions "iam.roles.list" "iam.serviceAccounts.list" || exit 1
+
+# Initialize HTML report using shared library
+# Set output file path
+OUTPUT_FILE="${REPORT_DIR}/pci_req${REQUIREMENT_NUMBER}_report_$(date +%Y%m%d_%H%M%S).html"
+
+# Initialize HTML report using shared library
+initialize_report "$OUTPUT_FILE" "PCI DSS 4.0.1 - Requirement $REQUIREMENT_NUMBER Compliance Assessment Report" "${REQUIREMENT_NUMBER}"
+
+
+
+
+
+
+
+
+
+
+
+print_status "INFO" "============================================="
+print_status "INFO" "  PCI DSS 4.0.1 - Requirement 7 (GCP)"
+print_status "INFO" "============================================="
+echo ""
+
+# Display scope information using shared library
+# Display scope information using shared library - now handled in print_status calls
+print_status "INFO" "Assessment scope: ${ASSESSMENT_SCOPE:-project}"
+if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
+    print_status "INFO" "Organization ID: ${ORG_ID}"
 else
-    OUTPUT_FILE="$OUTPUT_DIR/gcp_project_pci_req${REQUIREMENT_NUMBER}_report_$TIMESTAMP.html"
-    REPORT_TITLE="$REPORT_TITLE (Project-specific)"
+    print_status "INFO" "Project ID: ${PROJECT_ID}"
 fi
 
-# Create reports directory if it doesn't exist
-mkdir -p "$OUTPUT_DIR"
+echo ""
+echo "Starting assessment at $(date)"
+echo ""
 
-# Counters for checks
+# Reset counters for actual compliance checks
 total_checks=0
 passed_checks=0
 warning_checks=0
 failed_checks=0
-access_denied_checks=0
 
-# Get project and organization info based on scope
-if [ -n "$SPECIFIC_PROJECT" ]; then
-    DEFAULT_PROJECT="$SPECIFIC_PROJECT"
-else
-    DEFAULT_PROJECT=$(gcloud config get-value project 2>/dev/null)
-fi
-
-if [ -n "$SPECIFIC_ORG" ]; then
-    DEFAULT_ORG="$SPECIFIC_ORG"
-else
-    DEFAULT_ORG=$(gcloud organizations list --format="value(name)" --limit=1 2>/dev/null | sed 's/organizations\///')
-fi
-
-# Function to print colored output
-print_status() {
-    local color=$1
-    local message=$2
-    echo -e "${color}${message}${NC}"
-}
-
-# Function to add HTML report sections
-add_html_section() {
-    local file=$1
-    local title=$2
-    local content=$3
-    local status=$4
-    
-    cat >> "$file" << EOF
-<div class="check-item $status">
-    <h3>$title</h3>
-    <div class="content">$content</div>
-</div>
-EOF
-}
-
-# Function to initialize HTML report
-initialize_html_report() {
-    local file=$1
-    local title=$2
-    
-    cat > "$file" << EOF
-<!DOCTYPE html>
-<html>
-<head>
-    <title>$title</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .header { background: #2e7d32; color: white; padding: 20px; border-radius: 5px; }
-        .summary { background: #f5f5f5; padding: 15px; margin: 20px 0; border-radius: 5px; }
-        .check-item { margin: 20px 0; padding: 15px; border-radius: 5px; border-left: 5px solid; }
-        .pass { background: #e8f5e8; border-color: #4caf50; }
-        .fail { background: #ffebee; border-color: #f44336; }
-        .warning { background: #fff3e0; border-color: #ff9800; }
-        .info { background: #e3f2fd; border-color: #2196f3; }
-        .red { color: #f44336; font-weight: bold; }
-        .green { color: #4caf50; font-weight: bold; }
-        .yellow { color: #ff9800; font-weight: bold; }
-        pre { background: #f5f5f5; padding: 10px; border-radius: 3px; overflow-x: auto; }
-        ul { margin: 10px 0; }
-        li { margin: 5px 0; }
-        table { border-collapse: collapse; width: 100%; margin: 10px 0; }
-        th, td { padding: 8px; border: 1px solid #ddd; text-align: left; }
-        th { background-color: #f0f0f0; }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>$title</h1>
-        <p>Generated on: $(date)</p>
-        <p>Assessment Scope: $ASSESSMENT_SCOPE</p>
-        <p>Project: ${DEFAULT_PROJECT:-Not specified}</p>
-        <p>Organization: ${DEFAULT_ORG:-Not available}</p>
-    </div>
-EOF
-}
-
-# Function to finalize HTML report
-finalize_html_report() {
-    local file=$1
-    local total=$2
-    local passed=$3
-    local failed=$4
-    local warnings=$5
-    
-    local pass_percentage=0
-    if [ $total -gt 0 ]; then
-        pass_percentage=$(( (passed * 100) / total ))
-    fi
-    
-    cat >> "$file" << EOF
-    <div class="summary">
-        <h2>Assessment Summary</h2>
-        <p><strong>Total Checks:</strong> $total</p>
-        <p><strong>Passed:</strong> <span class="green">$passed</span></p>
-        <p><strong>Failed:</strong> <span class="red">$failed</span></p>
-        <p><strong>Warnings:</strong> <span class="yellow">$warnings</span></p>
-        <p><strong>Success Rate:</strong> $pass_percentage%</p>
-        <p><strong>Assessment Scope:</strong> $ASSESSMENT_SCOPE</p>
-        $(if [ "$ASSESSMENT_SCOPE" == "organization" ]; then echo "<p><strong>Organization:</strong> $DEFAULT_ORG</p>"; else echo "<p><strong>Project:</strong> $DEFAULT_PROJECT</p>"; fi)
-    </div>
-</body>
-</html>
-EOF
-}
-
-# Function to check GCP API access
-check_gcp_permission() {
-    local service=$1
-    local operation=$2
-    local test_command=$3
-    
-    print_status $CYAN "Checking $service $operation..."
-    
-    if eval "$test_command" &>/dev/null; then
-        print_status $GREEN "✓ $service $operation access verified"
-        return 0
-    else
-        print_status $RED "✗ $service $operation access failed"
-        ((access_denied_checks++))
-        return 1
-    fi
-}
-
-# Function to build scope-aware gcloud commands
-build_gcloud_command() {
-    local base_command=$1
-    local project_override=$2
-    
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        if [ -n "$project_override" ]; then
-            echo "$base_command --project=$project_override"
-        else
-            echo "$base_command"
-        fi
-    else
-        echo "$base_command --project=$DEFAULT_PROJECT"
-    fi
-}
-
-# Function to get all projects in scope
-get_projects_in_scope() {
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        gcloud projects list --filter="parent.id:$DEFAULT_ORG" --format="value(projectId)" 2>/dev/null
-    else
-        echo "$DEFAULT_PROJECT"
-    fi
-}
-
-# Function to run command across all projects in scope
-run_across_projects() {
-    local base_command=$1
-    local format_option=$2
-    
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        local projects=$(get_projects_in_scope)
-        local results=""
-        
-        for project in $projects; do
-            local cmd=$(build_gcloud_command "$base_command" "$project")
-            if [ -n "$format_option" ]; then
-                cmd="$cmd $format_option"
-            fi
-            
-            local project_results=$(eval "$cmd" 2>/dev/null)
-            if [ -n "$project_results" ]; then
-                # Prefix results with project name for organization scope
-                while IFS= read -r line; do
-                    if [ -n "$line" ]; then
-                        results="${results}${project}/${line}"$'\n'
-                    fi
-                done <<< "$project_results"
-            fi
-        done
-        
-        echo "$results"
-    else
-        local cmd=$(build_gcloud_command "$base_command")
-        if [ -n "$format_option" ]; then
-            cmd="$cmd $format_option"
-        fi
-        eval "$cmd" 2>/dev/null
-    fi
-}
 
 # Function to check IAM policies for overly permissive permissions
 check_overly_permissive_policies() {
@@ -398,6 +197,31 @@ check_overly_permissive_policies() {
         return 0
     fi
 }
+
+print_status "INFO" "============================================="
+print_status "INFO" "  PCI DSS 4.0.1 - Requirement 7 (GCP)"
+print_status "INFO" "============================================="
+echo ""
+
+# Display scope information using shared library
+# Display scope information using shared library - now handled in print_status calls
+print_status "INFO" "Assessment scope: ${ASSESSMENT_SCOPE:-project}"
+if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
+    print_status "INFO" "Organization ID: ${ORG_ID}"
+else
+    print_status "INFO" "Project ID: ${PROJECT_ID}"
+fi
+
+echo ""
+echo "Starting assessment at $(date)"
+echo ""
+
+# Reset counters for actual compliance checks
+total_checks=0
+passed_checks=0
+warning_checks=0
+failed_checks=0
+
 
 # Function to check for inactive service accounts
 check_inactive_service_accounts() {
@@ -551,6 +375,31 @@ check_inactive_service_accounts() {
     fi
 }
 
+print_status "INFO" "============================================="
+print_status "INFO" "  PCI DSS 4.0.1 - Requirement 7 (GCP)"
+print_status "INFO" "============================================="
+echo ""
+
+# Display scope information using shared library
+# Display scope information using shared library - now handled in print_status calls
+print_status "INFO" "Assessment scope: ${ASSESSMENT_SCOPE:-project}"
+if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
+    print_status "INFO" "Organization ID: ${ORG_ID}"
+else
+    print_status "INFO" "Project ID: ${PROJECT_ID}"
+fi
+
+echo ""
+echo "Starting assessment at $(date)"
+echo ""
+
+# Reset counters for actual compliance checks
+total_checks=0
+passed_checks=0
+warning_checks=0
+failed_checks=0
+
+
 # Function to check least privilege implementation
 check_least_privilege() {
     local details=""
@@ -632,7 +481,7 @@ check_least_privilege() {
     # Check Compute Engine instances for OS Login across scope
     local instances
     if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        instances=$(run_across_projects "gcloud compute instances list" "--format='value(name,zone,metadata.items)'")
+        instances=$(run_gcp_command_across_projects "gcloud compute instances list" "--format='value(name,zone,metadata.items)'")
     else
         instances=$(gcloud compute instances list --format="value(name,zone,metadata.items)" 2>/dev/null)
     fi
@@ -677,6 +526,31 @@ check_least_privilege() {
     fi
 }
 
+print_status "INFO" "============================================="
+print_status "INFO" "  PCI DSS 4.0.1 - Requirement 7 (GCP)"
+print_status "INFO" "============================================="
+echo ""
+
+# Display scope information using shared library
+# Display scope information using shared library - now handled in print_status calls
+print_status "INFO" "Assessment scope: ${ASSESSMENT_SCOPE:-project}"
+if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
+    print_status "INFO" "Organization ID: ${ORG_ID}"
+else
+    print_status "INFO" "Project ID: ${PROJECT_ID}"
+fi
+
+echo ""
+echo "Starting assessment at $(date)"
+echo ""
+
+# Reset counters for actual compliance checks
+total_checks=0
+passed_checks=0
+warning_checks=0
+failed_checks=0
+
+
 # Function to check access control systems configuration
 check_access_control_systems() {
     local details=""
@@ -687,7 +561,7 @@ check_access_control_systems() {
     # Check VPC firewall rules for default-deny across scope
     local firewall_rules
     if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        firewall_rules=$(run_across_projects "gcloud compute firewall-rules list" "--format='value(name,direction,sourceRanges)' --filter='disabled:false'")
+        firewall_rules=$(run_gcp_command_across_projects "gcloud compute firewall-rules list" "--format='value(name,direction,sourceRanges)' --filter='disabled:false'")
     else
         firewall_rules=$(gcloud compute firewall-rules list --format="value(name,direction,sourceRanges)" --filter="disabled:false" 2>/dev/null)
     fi
@@ -717,7 +591,7 @@ check_access_control_systems() {
     # Check for Identity-Aware Proxy usage across scope
     local iap_resources
     if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        iap_resources=$(run_across_projects "gcloud iap settings get" "--format='value(name)'")
+        iap_resources=$(run_gcp_command_across_projects "gcloud iap settings get" "--format='value(name)'")
     else
         iap_resources=$(gcloud iap settings get --project="$DEFAULT_PROJECT" --format="value(name)" 2>/dev/null)
     fi
@@ -740,34 +614,34 @@ check_access_control_systems() {
 # Validate scope and requirements
 if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
     if [ -z "$DEFAULT_ORG" ]; then
-        print_status $RED "Error: Organization scope requires an organization ID."
-        print_status $YELLOW "Please provide organization ID with --org flag or ensure you have organization access."
+        print_status "FAIL" "Error: Organization scope requires an organization ID."
+        print_status "WARN" "Please provide organization ID with --org flag or ensure you have organization access."
         exit 1
     fi
 else
     # Project scope validation
     if [ -z "$DEFAULT_PROJECT" ]; then
-        print_status $RED "Error: No project specified."
-        print_status $YELLOW "Please set a default project with: gcloud config set project PROJECT_ID"
-        print_status $YELLOW "Or specify a project with: --project PROJECT_ID"
+        print_status "FAIL" "Error: No project specified."
+        print_status "WARN" "Please set a default project with: gcloud config set project PROJECT_ID"
+        print_status "WARN" "Or specify a project with: --project PROJECT_ID"
         exit 1
     fi
 fi
 
 # Start script execution
-print_status $BLUE "============================================="
-print_status $BLUE "  PCI DSS 4.0.1 - Requirement $REQUIREMENT_NUMBER (GCP)"
-print_status $BLUE "  (Restrict Access by Business Need to Know)"
-print_status $BLUE "============================================="
+print_status "INFO" "============================================="
+print_status "INFO" "  PCI DSS 4.0.1 - Requirement $REQUIREMENT_NUMBER (GCP)"
+print_status "INFO" "  (Restrict Access by Business Need to Know)"
+print_status "INFO" "============================================="
 echo ""
 
 # Display scope information
-print_status $CYAN "Assessment Scope: $ASSESSMENT_SCOPE"
+print_status "INFO" "Assessment Scope: $ASSESSMENT_SCOPE"
 if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-    print_status $CYAN "Organization: $DEFAULT_ORG"
-    print_status $YELLOW "Note: Organization-wide assessment may take longer and requires broader permissions"
+    print_status "INFO" "Organization: $DEFAULT_ORG"
+    print_status "WARN" "Note: Organization-wide assessment may take longer and requires broader permissions"
 else
-    print_status $CYAN "Project: $DEFAULT_PROJECT"
+    print_status "INFO" "Project: $DEFAULT_PROJECT"
 fi
 echo ""
 
@@ -783,7 +657,7 @@ echo ""
 #----------------------------------------------------------------------
 add_html_section "$OUTPUT_FILE" "GCP Permissions Check" "<p>Verifying access to required GCP services for PCI Requirement $REQUIREMENT_NUMBER assessment...</p>" "info"
 
-print_status $CYAN "=== CHECKING REQUIRED GCP PERMISSIONS ==="
+print_status "INFO" "=== CHECKING REQUIRED GCP PERMISSIONS ==="
 
 # Check all required permissions based on scope
 if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
@@ -823,7 +697,7 @@ else
 fi
 
 if [ $permissions_percentage -lt 70 ]; then
-    print_status $RED "WARNING: Insufficient permissions to perform a complete PCI Requirement $REQUIREMENT_NUMBER assessment."
+    print_status "FAIL" "WARNING: Insufficient permissions to perform a complete PCI Requirement $REQUIREMENT_NUMBER assessment."
     add_html_section "$OUTPUT_FILE" "Permission Assessment" "<p class='red'>Insufficient permissions detected. Only $permissions_percentage% of required permissions are available.</p><p>Without these permissions, the assessment will be incomplete and may not accurately reflect your PCI DSS compliance status.</p>" "fail"
     read -p "Continue with limited assessment? (y/n): " CONTINUE
     if [[ ! $CONTINUE =~ ^[Yy]$ ]]; then
@@ -831,7 +705,7 @@ if [ $permissions_percentage -lt 70 ]; then
         exit 1
     fi
 else
-    print_status $GREEN "Permission check complete: $permissions_percentage% permissions available"
+    print_status "PASS" "Permission check complete: $permissions_percentage% permissions available"
     add_html_section "$OUTPUT_FILE" "Permission Assessment" "<p class='green'>Sufficient permissions detected. $permissions_percentage% of required permissions are available.</p>" "pass"
 fi
 
@@ -844,13 +718,13 @@ failed_checks=0
 #----------------------------------------------------------------------
 # SECTION 2: REQUIREMENT 7 ASSESSMENT LOGIC
 #----------------------------------------------------------------------
-print_status $CYAN "=== PCI REQUIREMENT $REQUIREMENT_NUMBER: RESTRICT ACCESS BY BUSINESS NEED TO KNOW ==="
+print_status "INFO" "=== PCI REQUIREMENT $REQUIREMENT_NUMBER: RESTRICT ACCESS BY BUSINESS NEED TO KNOW ==="
 
 # Requirement 7.2: Access to system components and data is appropriately defined and assigned
 add_html_section "$OUTPUT_FILE" "Requirement 7.2: Access definition and assignment" "<p>Verifying access control implementation based on job classification and least privilege...</p>" "info"
 
 # Check 7.2.2 - Least privilege implementation
-print_status $CYAN "Checking least privilege implementation..."
+print_status "INFO" "Checking least privilege implementation..."
 privilege_details=$(check_least_privilege)
 if [[ "$privilege_details" == *"class='red'"* ]] || [[ "$privilege_details" == *"class='yellow'"* ]]; then
     add_html_section "$OUTPUT_FILE" "7.2.2 - Least privilege implementation" "$privilege_details<p><strong>Remediation:</strong> Implement least privilege by using specific IAM roles instead of primitive roles. Enable OS Login for Compute Engine instances and create custom roles for specific job functions.</p>" "warning"
@@ -862,7 +736,7 @@ fi
 ((total_checks++))
 
 # Check 7.2.5 - Service account management
-print_status $CYAN "Checking service account management..."
+print_status "INFO" "Checking service account management..."
 sa_details=$(check_inactive_service_accounts)
 if [[ "$sa_details" == *"class='red'"* ]] || [[ "$sa_details" == *"class='yellow'"* ]]; then
     add_html_section "$OUTPUT_FILE" "7.2.5 - Service account management" "$sa_details<p><strong>Remediation:</strong> Review and manage service account keys. Remove old or unused keys and ensure service accounts have minimal required privileges.</p>" "warning"
@@ -877,7 +751,7 @@ fi
 add_html_section "$OUTPUT_FILE" "Requirement 7.3: Access control systems" "<p>Verifying access control system implementation and configuration...</p>" "info"
 
 # Check 7.3.1 - Access control system implementation
-print_status $CYAN "Checking access control systems..."
+print_status "INFO" "Checking access control systems..."
 acs_details=$(check_access_control_systems)
 if [[ "$acs_details" == *"class='red'"* ]] || [[ "$acs_details" == *"class='yellow'"* ]]; then
     add_html_section "$OUTPUT_FILE" "7.3.1 - Access control system implementation" "$acs_details<p><strong>Remediation:</strong> Implement comprehensive access control systems using Cloud IAM, VPC firewalls, and Identity-Aware Proxy. Ensure need-to-know restrictions are enforced.</p>" "warning"
@@ -889,7 +763,7 @@ fi
 ((total_checks++))
 
 # Check 7.3.2 - Access control system configuration
-print_status $CYAN "Checking overly permissive policies..."
+print_status "INFO" "Checking overly permissive policies..."
 permissive_details=$(check_overly_permissive_policies)
 if [[ "$permissive_details" == *"class='red'"* ]] || [[ "$permissive_details" == *"class='yellow'"* ]]; then
     add_html_section "$OUTPUT_FILE" "7.3.2 - Access control system configuration" "$permissive_details<p><strong>Remediation:</strong> Review and restrict overly permissive IAM policies. Replace primitive roles with specific roles and limit external user access.</p>" "fail"
@@ -927,29 +801,24 @@ add_html_section "$OUTPUT_FILE" "Manual Verification Requirements" "$manual_chec
 ((total_checks++))
 
 #----------------------------------------------------------------------
+
+#----------------------------------------------------------------------
 # FINAL REPORT
 #----------------------------------------------------------------------
-finalize_html_report "$OUTPUT_FILE" "$total_checks" "$passed_checks" "$failed_checks" "$warning_checks"
 
-echo ""
-print_status $GREEN "======================= ASSESSMENT SUMMARY ======================="
-echo "Total checks performed: $total_checks"
-echo "Passed checks: $passed_checks"
-echo "Failed checks: $failed_checks"
-echo "Warning checks: $warning_checks"
-echo "Assessment scope: $ASSESSMENT_SCOPE"
-if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-    echo "Organization: $DEFAULT_ORG"
-else
-    echo "Project: $DEFAULT_PROJECT"
-fi
-print_status $GREEN "=================================================================="
-echo ""
-print_status $CYAN "Report has been generated: $OUTPUT_FILE"
+# Finalize HTML report using shared library
+# Add final summary metrics
+add_summary_metrics "$OUTPUT_FILE" "$total_checks" "$passed_checks" "$failed_checks" "$warning_checks"
 
-# Open the report if on macOS
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    open "$OUTPUT_FILE"
-fi
+# Finalize HTML report using shared library
+finalize_report "$OUTPUT_FILE" "${REQUIREMENT_NUMBER}"
 
-print_status $GREEN "=================================================================="
+# Display final summary using shared library
+# Display final summary using shared library
+print_status "INFO" "=== ASSESSMENT SUMMARY ==="
+print_status "INFO" "Total checks: $total_checks"
+print_status "PASS" "Passed: $passed_checks"
+print_status "FAIL" "Failed: $failed_checks"
+print_status "WARN" "Warnings: $warning_checks"
+print_status "INFO" "Report has been generated: $OUTPUT_FILE"
+print_status "PASS" "=================================================================="

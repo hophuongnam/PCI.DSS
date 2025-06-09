@@ -4,16 +4,68 @@
 # This script evaluates GCP security testing and monitoring for PCI DSS Requirement 11 compliance
 # Requirements covered: 11.1 - 11.6 (Test Security of Systems and Networks Regularly)
 
-# Framework Integration - Load all 4 shared libraries
-LIB_DIR="$(dirname "$0")/lib"
-source "$LIB_DIR/gcp_common.sh"
-source "$LIB_DIR/gcp_permissions.sh"
-source "$LIB_DIR/gcp_html_report.sh"
-source "$LIB_DIR/gcp_scope_mgmt.sh"
+# Load shared libraries
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIB_DIR="$SCRIPT_DIR/lib"
 
-# Script-specific configuration
+source "$LIB_DIR/gcp_common.sh" || exit 1
+source "$LIB_DIR/gcp_permissions.sh" || exit 1
+source "$LIB_DIR/gcp_scope_mgmt.sh" || exit 1
+source "$LIB_DIR/gcp_html_report.sh" || exit 1
+
+# Script-specific variables
 REQUIREMENT_NUMBER="11"
-REQUIREMENT_TITLE="Test Security of Systems and Networks Regularly"
+
+# Initialize environment
+setup_environment || exit 1
+
+# Parse command line arguments using shared function
+parse_common_arguments "$@"
+case $? in
+    1) exit 1 ;;  # Error
+    2) exit 0 ;;  # Help displayed
+esac
+
+# Setup report configuration using shared library
+load_requirement_config "${REQUIREMENT_NUMBER}"
+
+# Validate scope and setup project context using shared library
+setup_assessment_scope || exit 1
+
+# Check permissions using shared library
+check_required_permissions "compute.instances.list" "security.assessments.list" || exit 1
+
+# Initialize HTML report using shared library
+# Set output file path
+OUTPUT_FILE="${REPORT_DIR}/pci_req${REQUIREMENT_NUMBER}_report_$(date +%Y%m%d_%H%M%S).html"
+
+# Initialize HTML report using shared library
+initialize_report "$OUTPUT_FILE" "PCI DSS 4.0.1 - Requirement $REQUIREMENT_NUMBER Compliance Assessment Report" "${REQUIREMENT_NUMBER}"
+
+print_status "INFO" "============================================="
+print_status "INFO" "  PCI DSS 4.0.1 - Requirement 11 (GCP)"
+print_status "INFO" "============================================="
+echo ""
+
+# Display scope information using shared library
+# Display scope information using shared library - now handled in print_status calls
+print_status "INFO" "Assessment scope: ${ASSESSMENT_SCOPE:-project}"
+if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
+    print_status "INFO" "Organization ID: ${ORG_ID}"
+else
+    print_status "INFO" "Project ID: ${PROJECT_ID}"
+fi
+
+echo ""
+echo "Starting assessment at $(date)"
+echo ""
+
+# Reset counters for actual compliance checks
+total_checks=0
+passed_checks=0
+warning_checks=0
+failed_checks=0
+
 
 # Function to show help
 show_help() {

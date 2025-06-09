@@ -198,13 +198,13 @@ check_gcp_permission() {
     local operation=$2
     local test_command=$3
     
-    print_status $CYAN "Checking $service $operation..."
+    print_status "INFO" "Checking $service $operation..."
     
     if eval "$test_command" &>/dev/null; then
-        print_status $GREEN "✓ $service $operation access verified"
+        print_status "PASS" "✓ $service $operation access verified"
         return 0
     else
-        print_status $RED "✗ $service $operation access failed"
+        print_status "FAIL" "✗ $service $operation access failed"
         ((access_denied_checks++))
         return 1
     fi
@@ -274,33 +274,33 @@ run_across_projects() {
 # Validate scope and requirements
 if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
     if [ -z "$DEFAULT_ORG" ]; then
-        print_status $RED "Error: Organization scope requires an organization ID."
-        print_status $YELLOW "Please provide organization ID with --org flag or ensure you have organization access."
+        print_status "FAIL" "Error: Organization scope requires an organization ID."
+        print_status "WARN" "Please provide organization ID with --org flag or ensure you have organization access."
         exit 1
     fi
 else
     # Project scope validation
     if [ -z "$DEFAULT_PROJECT" ]; then
-        print_status $RED "Error: No project specified."
-        print_status $YELLOW "Please set a default project with: gcloud config set project PROJECT_ID"
-        print_status $YELLOW "Or specify a project with: --project PROJECT_ID"
+        print_status "FAIL" "Error: No project specified."
+        print_status "WARN" "Please set a default project with: gcloud config set project PROJECT_ID"
+        print_status "WARN" "Or specify a project with: --project PROJECT_ID"
         exit 1
     fi
 fi
 
 # Start script execution
-print_status $BLUE "============================================="
-print_status $BLUE "  PCI DSS 4.0.1 - Requirement 2 (GCP)"
-print_status $BLUE "============================================="
+print_status "INFO" "============================================="
+print_status "INFO" "  PCI DSS 4.0.1 - Requirement 2 (GCP)"
+print_status "INFO" "============================================="
 echo ""
 
 # Display scope information
-print_status $CYAN "Assessment Scope: $ASSESSMENT_SCOPE"
+print_status "INFO" "Assessment Scope: $ASSESSMENT_SCOPE"
 if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-    print_status $CYAN "Organization: $DEFAULT_ORG"
-    print_status $YELLOW "Note: Organization-wide assessment may take longer and requires broader permissions"
+    print_status "INFO" "Organization: $DEFAULT_ORG"
+    print_status "WARN" "Note: Organization-wide assessment may take longer and requires broader permissions"
 else
-    print_status $CYAN "Project: $DEFAULT_PROJECT"
+    print_status "INFO" "Project: $DEFAULT_PROJECT"
 fi
 echo ""
 
@@ -316,7 +316,7 @@ echo ""
 #----------------------------------------------------------------------
 add_html_section "$OUTPUT_FILE" "GCP Permissions Check" "<p>Verifying access to required GCP services for PCI Requirement 2 assessment...</p>" "info"
 
-print_status $CYAN "=== CHECKING REQUIRED GCP PERMISSIONS ==="
+print_status "INFO" "=== CHECKING REQUIRED GCP PERMISSIONS ==="
 
 # Check all required permissions based on scope
 if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
@@ -364,7 +364,7 @@ else
 fi
 
 if [ $permissions_percentage -lt 70 ]; then
-    print_status $RED "WARNING: Insufficient permissions to perform a complete PCI Requirement 2 assessment."
+    print_status "FAIL" "WARNING: Insufficient permissions to perform a complete PCI Requirement 2 assessment."
     add_html_section "$OUTPUT_FILE" "Permission Assessment" "<p class='red'>Insufficient permissions detected. Only $permissions_percentage% of required permissions are available.</p><p>Without these permissions, the assessment will be incomplete and may not accurately reflect your PCI DSS compliance status.</p>" "fail"
     read -p "Continue with limited assessment? (y/n): " CONTINUE
     if [[ ! $CONTINUE =~ ^[Yy]$ ]]; then
@@ -372,7 +372,7 @@ if [ $permissions_percentage -lt 70 ]; then
         exit 1
     fi
 else
-    print_status $GREEN "Permission check complete: $permissions_percentage% permissions available"
+    print_status "PASS" "Permission check complete: $permissions_percentage% permissions available"
     add_html_section "$OUTPUT_FILE" "Permission Assessment" "<p class='green'>Sufficient permissions detected. $permissions_percentage% of required permissions are available.</p>" "pass"
 fi
 
@@ -385,11 +385,11 @@ failed_checks=0
 #----------------------------------------------------------------------
 # SECTION 2: PCI REQUIREMENT 2.2 - SECURE SYSTEM COMPONENT CONFIG
 #----------------------------------------------------------------------
-print_status $CYAN "=== PCI REQUIREMENT 2.2: SYSTEM COMPONENTS CONFIGURED AND MANAGED SECURELY ==="
+print_status "INFO" "=== PCI REQUIREMENT 2.2: SYSTEM COMPONENTS CONFIGURED AND MANAGED SECURELY ==="
 
 # Check 2.2.1 - Configuration standards
-print_status $BLUE "2.2.1 - Configuration standards for system components"
-print_status $CYAN "Checking for evidence of configuration standards implementation..."
+print_status "INFO" "2.2.1 - Configuration standards for system components"
+print_status "INFO" "Checking for evidence of configuration standards implementation..."
 
 config_standards_details="<p>Analysis of configuration standards implementation:</p><ul>"
 
@@ -398,10 +398,10 @@ if [ "$ASSESSMENT_SCOPE" == "organization" ] && [ -n "$DEFAULT_ORG" ]; then
     org_policies=$(gcloud resource-manager org-policies list --organization=$DEFAULT_ORG --format="value(constraint)" 2>/dev/null | grep -E "(compute|security)" | wc -l)
     
     if [ $org_policies -gt 0 ]; then
-        print_status $GREEN "Organization policies for compute/security found"
+        print_status "PASS" "Organization policies for compute/security found"
         config_standards_details+="<li class='green'>Organization policies for compute/security found: $org_policies</li>"
     else
-        print_status $YELLOW "No organization policies for compute/security found"
+        print_status "WARN" "No organization policies for compute/security found"
         config_standards_details+="<li class='yellow'>No organization policies for compute/security found</li>"
     fi
 fi
@@ -424,8 +424,8 @@ add_html_section "$OUTPUT_FILE" "2.2.1 - Configuration standards" "$config_stand
 ((total_checks++))
 
 # Check 2.2.2 - Vendor default accounts
-print_status $BLUE "2.2.2 - Vendor default accounts management"
-print_status $CYAN "Checking for vendor default accounts and configurations..."
+print_status "INFO" "2.2.2 - Vendor default accounts management"
+print_status "INFO" "Checking for vendor default accounts and configurations..."
 
 default_accounts_details="<p>Analysis of vendor default accounts:</p><ul>"
 
@@ -433,12 +433,12 @@ default_accounts_details="<p>Analysis of vendor default accounts:</p><ul>"
 default_sas=$(run_across_projects "gcloud iam service-accounts list" "--format=value(email)" | grep -E "(compute@developer|appspot)" | wc -l)
 
 if [ $default_sas -gt 0 ]; then
-    print_status $YELLOW "Default service accounts detected"
+    print_status "WARN" "Default service accounts detected"
     default_accounts_details+="<li class='yellow'>Default service accounts detected: $default_sas</li>"
     default_accounts_details+="<li>Review if these are necessary and properly secured</li>"
     ((warning_checks++))
 else
-    print_status $GREEN "No default service accounts detected"
+    print_status "PASS" "No default service accounts detected"
     default_accounts_details+="<li class='green'>No problematic default service accounts detected</li>"
     ((passed_checks++))
 fi
@@ -447,11 +447,11 @@ fi
 instances_with_default_sa=$(run_across_projects "gcloud compute instances list" "--format=value(name,serviceAccounts.email)" | grep -E "(compute@developer|appspot)" | wc -l)
 
 if [ $instances_with_default_sa -gt 0 ]; then
-    print_status $RED "Instances using default service accounts detected"
+    print_status "FAIL" "Instances using default service accounts detected"
     default_accounts_details+="<li class='red'>Instances using default service accounts: $instances_with_default_sa</li>"
     ((failed_checks++))
 else
-    print_status $GREEN "No instances using default service accounts"
+    print_status "PASS" "No instances using default service accounts"
     default_accounts_details+="<li class='green'>No instances using default service accounts</li>"
     ((passed_checks++))
 fi
@@ -462,8 +462,8 @@ add_html_section "$OUTPUT_FILE" "2.2.2 - Vendor default accounts" "$default_acco
 ((total_checks++))
 
 # Check 2.2.3 - Primary functions security isolation
-print_status $BLUE "2.2.3 - Primary functions with different security levels"
-print_status $CYAN "Checking for proper isolation of functions with different security levels..."
+print_status "INFO" "2.2.3 - Primary functions with different security levels"
+print_status "INFO" "Checking for proper isolation of functions with different security levels..."
 
 security_isolation_details="<p>Analysis of security function isolation:</p><ul>"
 
@@ -471,12 +471,12 @@ security_isolation_details="<p>Analysis of security function isolation:</p><ul>"
 mixed_instances=$(run_across_projects "gcloud compute instances list" "--format=value(name,tags.items)" | grep -i -E "(web.*db|db.*web|app.*db|db.*app)" | wc -l)
 
 if [ $mixed_instances -gt 0 ]; then
-    print_status $YELLOW "Potential mixed-purpose instances detected"
+    print_status "WARN" "Potential mixed-purpose instances detected"
     security_isolation_details+="<li class='yellow'>Potential mixed-purpose instances detected: $mixed_instances</li>"
     security_isolation_details+="<li>Review for proper security level isolation</li>"
     ((warning_checks++))
 else
-    print_status $GREEN "No obvious mixed-purpose instances detected"
+    print_status "PASS" "No obvious mixed-purpose instances detected"
     security_isolation_details+="<li class='green'>No obvious mixed-purpose instances detected</li>"
     ((passed_checks++))
 fi
@@ -497,8 +497,8 @@ add_html_section "$OUTPUT_FILE" "2.2.3 - Primary functions security isolation" "
 ((total_checks++))
 
 # Check 2.2.4 - Unnecessary services/functions disabled
-print_status $BLUE "2.2.4 - Unnecessary services, protocols, daemons disabled"
-print_status $CYAN "Checking for unnecessary services and open ports..."
+print_status "INFO" "2.2.4 - Unnecessary services, protocols, daemons disabled"
+print_status "INFO" "Checking for unnecessary services and open ports..."
 
 unnecessary_services_details="<p>Analysis of potentially unnecessary services:</p><ul>"
 
@@ -506,12 +506,12 @@ unnecessary_services_details="<p>Analysis of potentially unnecessary services:</
 external_ip_instances=$(run_across_projects "gcloud compute instances list" "--format=value(name,networkInterfaces[0].accessConfigs[0].natIP)" | grep -v "None" | grep -v "^$" | wc -l)
 
 if [ $external_ip_instances -gt 0 ]; then
-    print_status $YELLOW "Instances with external IPs detected"
+    print_status "WARN" "Instances with external IPs detected"
     unnecessary_services_details+="<li class='yellow'>Instances with external IPs: $external_ip_instances</li>"
     unnecessary_services_details+="<li>Review if external access is necessary</li>"
     ((warning_checks++))
 else
-    print_status $GREEN "No instances with external IPs detected"
+    print_status "PASS" "No instances with external IPs detected"
     unnecessary_services_details+="<li class='green'>No instances with external IPs detected</li>"
     ((passed_checks++))
 fi
@@ -570,12 +570,12 @@ if [ -n "$permissive_fw_rules" ]; then
 fi
 
 if [ $exposed_count -gt 0 ]; then
-    print_status $RED "High-risk ports exposed to internet detected"
+    print_status "FAIL" "High-risk ports exposed to internet detected"
     unnecessary_services_details+="<li class='red'>High-risk ports exposed to internet: $exposed_count firewall rules</li>"
     unnecessary_services_details+="<li><strong>Details:</strong>$exposed_details</li>"
     ((failed_checks++))
 else
-    print_status $GREEN "No high-risk ports exposed to internet"
+    print_status "PASS" "No high-risk ports exposed to internet"
     unnecessary_services_details+="<li class='green'>No high-risk ports exposed to internet</li>"
     ((passed_checks++))
 fi
@@ -586,8 +586,8 @@ add_html_section "$OUTPUT_FILE" "2.2.4 - Unnecessary services disabled" "$unnece
 ((total_checks++))
 
 # Check 2.2.5 - Insecure services documentation and mitigation
-print_status $BLUE "2.2.5 - Insecure services, protocols, daemons"
-print_status $CYAN "Checking for insecure services and protocols..."
+print_status "INFO" "2.2.5 - Insecure services, protocols, daemons"
+print_status "INFO" "Checking for insecure services and protocols..."
 
 insecure_services_details="<p>Analysis of potentially insecure services:</p><ul>"
 
@@ -616,11 +616,11 @@ if [ -n "$cloud_sql_instances" ]; then
     done
     
     if [ $insecure_sql_count -gt 0 ]; then
-        print_status $RED "Cloud SQL instances without required SSL detected"
+        print_status "FAIL" "Cloud SQL instances without required SSL detected"
         insecure_services_details+="<li class='red'>Cloud SQL instances without required SSL: $insecure_sql_count</li>"
         ((failed_checks++))
     else
-        print_status $GREEN "All Cloud SQL instances require SSL"
+        print_status "PASS" "All Cloud SQL instances require SSL"
         insecure_services_details+="<li class='green'>All Cloud SQL instances require SSL</li>"
         ((passed_checks++))
     fi
@@ -632,11 +632,11 @@ fi
 insecure_protocols=$(run_across_projects "gcloud compute firewall-rules list" "--format=value(name,allowed)" | grep -E "(tcp:21|tcp:23|tcp:53|udp:69)" | wc -l)
 
 if [ $insecure_protocols -gt 0 ]; then
-    print_status $RED "Firewall rules allowing insecure protocols detected"
+    print_status "FAIL" "Firewall rules allowing insecure protocols detected"
     insecure_services_details+="<li class='red'>Firewall rules allowing insecure protocols: $insecure_protocols</li>"
     ((failed_checks++))
 else
-    print_status $GREEN "No firewall rules allowing common insecure protocols"
+    print_status "PASS" "No firewall rules allowing common insecure protocols"
     insecure_services_details+="<li class='green'>No firewall rules allowing common insecure protocols</li>"
     ((passed_checks++))
 fi
@@ -647,8 +647,8 @@ add_html_section "$OUTPUT_FILE" "2.2.5 - Insecure services mitigation" "$insecur
 ((total_checks++))
 
 # Check 2.2.6 - System security parameters
-print_status $BLUE "2.2.6 - System security parameters configured to prevent misuse"
-print_status $CYAN "Checking system security parameters..."
+print_status "INFO" "2.2.6 - System security parameters configured to prevent misuse"
+print_status "INFO" "Checking system security parameters..."
 
 security_params_details="<p>Analysis of system security parameters:</p><ul>"
 
@@ -662,11 +662,11 @@ if [ "$ASSESSMENT_SCOPE" == "organization" ] && [ -n "$DEFAULT_ORG" ]; then
 fi
 
 if [ $os_login_enabled -eq 1 ]; then
-    print_status $GREEN "OS Login enforced at organization level"
+    print_status "PASS" "OS Login enforced at organization level"
     security_params_details+="<li class='green'>OS Login enforced at organization level</li>"
     ((passed_checks++))
 else
-    print_status $YELLOW "OS Login not enforced at organization level"
+    print_status "WARN" "OS Login not enforced at organization level"
     security_params_details+="<li class='yellow'>OS Login not enforced at organization level</li>"
     ((warning_checks++))
 fi
@@ -681,11 +681,11 @@ if [ "$ASSESSMENT_SCOPE" == "organization" ] && [ -n "$DEFAULT_ORG" ]; then
 fi
 
 if [ $serial_port_disabled -eq 1 ]; then
-    print_status $GREEN "Serial port access disabled at organization level"
+    print_status "PASS" "Serial port access disabled at organization level"
     security_params_details+="<li class='green'>Serial port access disabled at organization level</li>"
     ((passed_checks++))
 else
-    print_status $YELLOW "Serial port access not disabled at organization level"
+    print_status "WARN" "Serial port access not disabled at organization level"
     security_params_details+="<li class='yellow'>Serial port access not disabled at organization level</li>"
     ((warning_checks++))
 fi
@@ -696,8 +696,8 @@ add_html_section "$OUTPUT_FILE" "2.2.6 - System security parameters" "$security_
 ((total_checks++))
 
 # Check 2.2.7 - Non-console administrative access encryption
-print_status $BLUE "2.2.7 - Non-console administrative access encryption"
-print_status $CYAN "Checking for encrypted administrative access..."
+print_status "INFO" "2.2.7 - Non-console administrative access encryption"
+print_status "INFO" "Checking for encrypted administrative access..."
 
 admin_encryption_details="<p>Analysis of administrative access encryption:</p><ul>"
 
@@ -705,11 +705,11 @@ admin_encryption_details="<p>Analysis of administrative access encryption:</p><u
 ssh_password_instances=$(run_across_projects "gcloud compute instances list" "--format=value(name,metadata.items)" | grep -i "enable-oslogin.*false" | wc -l)
 
 if [ $ssh_password_instances -gt 0 ]; then
-    print_status $YELLOW "Instances potentially allowing SSH password authentication"
+    print_status "WARN" "Instances potentially allowing SSH password authentication"
     admin_encryption_details+="<li class='yellow'>Instances potentially allowing SSH password authentication: $ssh_password_instances</li>"
     ((warning_checks++))
 else
-    print_status $GREEN "No instances explicitly allowing SSH password authentication"
+    print_status "PASS" "No instances explicitly allowing SSH password authentication"
     admin_encryption_details+="<li class='green'>No instances explicitly allowing SSH password authentication</li>"
     ((passed_checks++))
 fi
@@ -723,8 +723,8 @@ add_html_section "$OUTPUT_FILE" "2.2.7 - Administrative access encryption" "$adm
 ((total_checks++))
 
 # Check for Cloud Storage (equivalent to S3) configurations
-print_status $BLUE "2.2.4 continued - Cloud Storage bucket configurations"
-print_status $CYAN "Checking Cloud Storage buckets for secure configurations..."
+print_status "INFO" "2.2.4 continued - Cloud Storage bucket configurations"
+print_status "INFO" "Checking Cloud Storage buckets for secure configurations..."
 
 storage_details="<p>Analysis of Cloud Storage bucket configurations:</p><ul>"
 
@@ -761,11 +761,11 @@ if [ -n "$buckets" ]; then
         done <<< "$buckets"
         
         if [ $public_buckets -gt 0 ]; then
-            print_status $RED "Public Cloud Storage buckets detected"
+            print_status "FAIL" "Public Cloud Storage buckets detected"
             storage_details+="<li class='red'>Public buckets detected: $public_buckets</li>"
             ((failed_checks++))
         else
-            print_status $GREEN "No public Cloud Storage buckets detected"
+            print_status "PASS" "No public Cloud Storage buckets detected"
             storage_details+="<li class='green'>No public buckets detected</li>"
             ((passed_checks++))
         fi
@@ -786,11 +786,11 @@ add_html_section "$OUTPUT_FILE" "2.2.4 - Cloud Storage Security" "$storage_detai
 #----------------------------------------------------------------------
 # SECTION 3: PCI REQUIREMENT 2.3 - WIRELESS ENVIRONMENTS  
 #----------------------------------------------------------------------
-print_status $CYAN "=== PCI REQUIREMENT 2.3: WIRELESS ENVIRONMENTS CONFIGURED SECURELY ==="
+print_status "INFO" "=== PCI REQUIREMENT 2.3: WIRELESS ENVIRONMENTS CONFIGURED SECURELY ==="
 
 # Check 2.3.1 & 2.3.2 - Wireless security
-print_status $BLUE "2.3.1 & 2.3.2 - Wireless environment security"
-print_status $CYAN "Checking for wireless environment configurations..."
+print_status "INFO" "2.3.1 & 2.3.2 - Wireless environment security"
+print_status "INFO" "Checking for wireless environment configurations..."
 
 wireless_details="<p>Analysis of wireless environment security:</p><ul>"
 
@@ -812,8 +812,8 @@ else
 fi
 
 # Check for default service accounts (similar to AWS IAM default users)
-print_status $BLUE "2.3.1 continued - Default account management"
-print_status $CYAN "Checking for usage of default service accounts..."
+print_status "INFO" "2.3.1 continued - Default account management"
+print_status "INFO" "Checking for usage of default service accounts..."
 
 default_sa_usage=$(run_across_projects "gcloud compute instances list" "--format=value(name,serviceAccounts.email)" | grep -E "(compute@developer|appspot)" | wc -l)
 
@@ -835,8 +835,8 @@ add_html_section "$OUTPUT_FILE" "2.3.1 & 2.3.2 - Wireless environment security" 
 #----------------------------------------------------------------------
 
 # Check for TLS configuration on Load Balancers (equivalent to AWS ELB)
-print_status $BLUE "2.2.7 continued - Load Balancer TLS Configuration"
-print_status $CYAN "Checking load balancer TLS configurations..."
+print_status "INFO" "2.2.7 continued - Load Balancer TLS Configuration"
+print_status "INFO" "Checking load balancer TLS configurations..."
 
 tls_details="<p>Analysis of load balancer TLS configurations:</p><ul>"
 
@@ -869,8 +869,8 @@ add_html_section "$OUTPUT_FILE" "2.2.7 - Load Balancer TLS Configuration" "$tls_
 ((total_checks++))
 
 # Check for audit logging (equivalent to AWS CloudTrail)
-print_status $BLUE "2.5.1 - Audit logging for change management"
-print_status $CYAN "Checking for audit logging configurations..."
+print_status "INFO" "2.5.1 - Audit logging for change management"
+print_status "INFO" "Checking for audit logging configurations..."
 
 audit_details="<p>Analysis of audit logging configurations:</p><ul>"
 
@@ -908,8 +908,8 @@ add_html_section "$OUTPUT_FILE" "2.5.1 - Audit logging for change management" "$
 ((total_checks++))
 
 # Check for unused/unnecessary resources (equivalent to AWS unused security groups)
-print_status $BLUE "2.6.1 - Unused resources cleanup"
-print_status $CYAN "Checking for unused firewall rules and other resources..."
+print_status "INFO" "2.6.1 - Unused resources cleanup"
+print_status "INFO" "Checking for unused firewall rules and other resources..."
 
 cleanup_details="<p>Analysis of potentially unused resources:</p><ul>"
 
@@ -978,12 +978,12 @@ add_html_section "$OUTPUT_FILE" "2.6.1 - Unused resources cleanup" "$cleanup_det
 finalize_html_report "$OUTPUT_FILE" "$total_checks" "$passed_checks" "$failed_checks" "$warning_checks"
 
 echo ""
-print_status $GREEN "======================= ASSESSMENT SUMMARY ======================="
+print_status "PASS" "======================= ASSESSMENT SUMMARY ======================="
 echo "Total checks performed: $total_checks"
 echo "Passed checks: $passed_checks"
 echo "Failed checks: $failed_checks"
 echo "Warning checks: $warning_checks"
-print_status $GREEN "=================================================================="
+print_status "PASS" "=================================================================="
 echo ""
-print_status $CYAN "Report has been generated: $OUTPUT_FILE"
-print_status $GREEN "=================================================================="
+print_status "INFO" "Report has been generated: $OUTPUT_FILE"
+print_status "PASS" "=================================================================="

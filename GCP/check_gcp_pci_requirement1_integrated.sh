@@ -198,13 +198,13 @@ check_gcp_permission() {
     local operation=$2
     local test_command=$3
     
-    print_status $CYAN "Checking $service $operation..."
+    print_status "INFO" "Checking $service $operation..."
     
     if eval "$test_command" &>/dev/null; then
-        print_status $GREEN "✓ $service $operation access verified"
+        print_status "PASS" "✓ $service $operation access verified"
         return 0
     else
-        print_status $RED "✗ $service $operation access failed"
+        print_status "FAIL" "✗ $service $operation access failed"
         ((access_denied_checks++))
         return 1
     fi
@@ -228,14 +228,14 @@ build_gcloud_command() {
 
 # Function to get all VPC networks based on assessment scope
 get_all_networks() {
-    print_status $CYAN "Retrieving VPC networks for $ASSESSMENT_SCOPE scope..."
+    print_status "INFO" "Retrieving VPC networks for $ASSESSMENT_SCOPE scope..."
     
     if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
         # Get all projects in organization and their networks
         PROJECTS=$(gcloud projects list --filter="parent.id:$DEFAULT_ORG" --format="value(projectId)" 2>/dev/null)
         
         if [ -z "$PROJECTS" ]; then
-            print_status $RED "FAILED - No projects found in organization or access denied"
+            print_status "FAIL" "FAILED - No projects found in organization or access denied"
             return 1
         fi
         
@@ -245,7 +245,7 @@ get_all_networks() {
         
         for project in $PROJECTS; do
             ((project_count++))
-            print_status $CYAN "  Checking project: $project"
+            print_status "INFO" "  Checking project: $project"
             
             # Get networks for this project
             project_networks=$(gcloud compute networks list --project="$project" --format="value(name)" 2>/dev/null)
@@ -262,10 +262,10 @@ get_all_networks() {
         done
         
         if [ $network_count -eq 0 ]; then
-            print_status $RED "FAILED - No VPC networks found across $project_count projects"
+            print_status "FAIL" "FAILED - No VPC networks found across $project_count projects"
             return 1
         else
-            print_status $GREEN "SUCCESS - Found $network_count VPC networks across $project_count projects"
+            print_status "PASS" "SUCCESS - Found $network_count VPC networks across $project_count projects"
             echo "$NETWORK_LIST"
             return 0
         fi
@@ -274,11 +274,11 @@ get_all_networks() {
         NETWORK_LIST=$(gcloud compute networks list --project="$DEFAULT_PROJECT" --format="value(name)" 2>/dev/null)
         
         if [ -z "$NETWORK_LIST" ]; then
-            print_status $RED "FAILED - No VPC networks found in project $DEFAULT_PROJECT or access denied"
+            print_status "FAIL" "FAILED - No VPC networks found in project $DEFAULT_PROJECT or access denied"
             return 1
         else
             network_count=$(echo "$NETWORK_LIST" | wc -l)
-            print_status $GREEN "SUCCESS - Found $network_count VPC networks in project $DEFAULT_PROJECT"
+            print_status "PASS" "SUCCESS - Found $network_count VPC networks in project $DEFAULT_PROJECT"
             echo "$NETWORK_LIST"
             return 0
         fi
@@ -288,43 +288,43 @@ get_all_networks() {
 # Validate scope and requirements
 if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
     if [ -z "$DEFAULT_ORG" ]; then
-        print_status $RED "Error: Organization scope requires an organization ID."
-        print_status $YELLOW "Please provide organization ID with --org flag or ensure you have organization access."
+        print_status "FAIL" "Error: Organization scope requires an organization ID."
+        print_status "WARN" "Please provide organization ID with --org flag or ensure you have organization access."
         exit 1
     fi
 else
     # Project scope validation
     if [ -z "$DEFAULT_PROJECT" ]; then
-        print_status $RED "Error: No project specified."
-        print_status $YELLOW "Please set a default project with: gcloud config set project PROJECT_ID"
-        print_status $YELLOW "Or specify a project with: --project PROJECT_ID"
+        print_status "FAIL" "Error: No project specified."
+        print_status "WARN" "Please set a default project with: gcloud config set project PROJECT_ID"
+        print_status "WARN" "Or specify a project with: --project PROJECT_ID"
         exit 1
     fi
 fi
 
 # Start script execution
-print_status $BLUE "============================================="
-print_status $BLUE "  PCI DSS 4.0.1 - Requirement 1 (GCP)"
-print_status $BLUE "============================================="
+print_status "INFO" "============================================="
+print_status "INFO" "  PCI DSS 4.0.1 - Requirement 1 (GCP)"
+print_status "INFO" "============================================="
 echo ""
 
 # Display scope information
-print_status $CYAN "Assessment Scope: $ASSESSMENT_SCOPE"
+print_status "INFO" "Assessment Scope: $ASSESSMENT_SCOPE"
 if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-    print_status $CYAN "Organization: $DEFAULT_ORG"
-    print_status $YELLOW "Note: Organization-wide assessment may take longer and requires broader permissions"
+    print_status "INFO" "Organization: $DEFAULT_ORG"
+    print_status "WARN" "Note: Organization-wide assessment may take longer and requires broader permissions"
 else
-    print_status $CYAN "Project: $DEFAULT_PROJECT"
+    print_status "INFO" "Project: $DEFAULT_PROJECT"
 fi
 echo ""
 
 # Ask for CDE networks
 read -p "Enter CDE VPC network names (comma-separated or 'all' for all networks): " CDE_NETWORKS
 if [ -z "$CDE_NETWORKS" ] || [ "$CDE_NETWORKS" == "all" ]; then
-    print_status $YELLOW "Checking all VPC networks"
+    print_status "WARN" "Checking all VPC networks"
     CDE_NETWORKS="all"
 else
-    print_status $YELLOW "Checking specific networks: $CDE_NETWORKS"
+    print_status "WARN" "Checking specific networks: $CDE_NETWORKS"
 fi
 
 # Initialize HTML report
@@ -339,7 +339,7 @@ echo ""
 #----------------------------------------------------------------------
 add_html_section "$OUTPUT_FILE" "GCP Permissions Check" "<p>Verifying access to required GCP services for PCI Requirement 1 assessment...</p>" "info"
 
-print_status $CYAN "=== CHECKING REQUIRED GCP PERMISSIONS ==="
+print_status "INFO" "=== CHECKING REQUIRED GCP PERMISSIONS ==="
 
 # Check all required permissions based on scope
 if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
@@ -389,7 +389,7 @@ else
 fi
 
 if [ $permissions_percentage -lt 70 ]; then
-    print_status $RED "WARNING: Insufficient permissions to perform a complete PCI Requirement 1 assessment."
+    print_status "FAIL" "WARNING: Insufficient permissions to perform a complete PCI Requirement 1 assessment."
     add_html_section "$OUTPUT_FILE" "Permission Assessment" "<p class='red'>Insufficient permissions detected. Only $permissions_percentage% of required permissions are available.</p><p>Without these permissions, the assessment will be incomplete and may not accurately reflect your PCI DSS compliance status.</p>" "fail"
     read -p "Continue with limited assessment? (y/n): " CONTINUE
     if [[ ! $CONTINUE =~ ^[Yy]$ ]]; then
@@ -397,7 +397,7 @@ if [ $permissions_percentage -lt 70 ]; then
         exit 1
     fi
 else
-    print_status $GREEN "Permission check complete: $permissions_percentage% permissions available"
+    print_status "PASS" "Permission check complete: $permissions_percentage% permissions available"
     add_html_section "$OUTPUT_FILE" "Permission Assessment" "<p class='green'>Sufficient permissions detected. $permissions_percentage% of required permissions are available.</p>" "pass"
 fi
 
@@ -412,13 +412,13 @@ failed_checks=0
 #----------------------------------------------------------------------
 add_html_section "$OUTPUT_FILE" "Target VPC Networks" "<p>Identifying VPC networks for assessment...</p>" "info"
 
-print_status $CYAN "=== IDENTIFYING TARGET VPC NETWORKS ==="
+print_status "INFO" "=== IDENTIFYING TARGET VPC NETWORKS ==="
 
 if [ "$CDE_NETWORKS" == "all" ]; then
     TARGET_NETWORKS=$(get_all_networks)
     GET_NETWORKS_RESULT=$?
     if [ $GET_NETWORKS_RESULT -ne 0 ]; then
-        print_status $RED "Failed to retrieve VPC network information. Check your permissions."
+        print_status "FAIL" "Failed to retrieve VPC network information. Check your permissions."
         add_html_section "$OUTPUT_FILE" "Network Identification" "<p class='red'>Failed to retrieve VPC network information.</p>" "fail"
         exit 1
     else
@@ -434,11 +434,11 @@ fi
 #----------------------------------------------------------------------
 # SECTION 3: PCI REQUIREMENT 1.2 - NETWORK SECURITY CONTROLS CONFIG
 #----------------------------------------------------------------------
-print_status $CYAN "=== PCI REQUIREMENT 1.2: NETWORK SECURITY CONTROLS CONFIGURATION ==="
+print_status "INFO" "=== PCI REQUIREMENT 1.2: NETWORK SECURITY CONTROLS CONFIGURATION ==="
 
 # Check 1.2.5 - Ports, protocols, and services inventory
-print_status $BLUE "1.2.5 - Ports, protocols, and services inventory"
-print_status $CYAN "Checking firewall rules for allowed ports, protocols, and services..."
+print_status "INFO" "1.2.5 - Ports, protocols, and services inventory"
+print_status "INFO" "Checking firewall rules for allowed ports, protocols, and services..."
 
 firewall_details="<p>Findings for allowed ports, protocols, and services:</p><ul>"
 
@@ -446,7 +446,7 @@ firewall_details="<p>Findings for allowed ports, protocols, and services:</p><ul
 firewall_rules=$(gcloud compute firewall-rules list --format="value(name,direction,sourceRanges.join(','),allowed[].map().firewall_rule().list():label=ALLOW,targetTags.join(','),network)" 2>/dev/null)
 
 if [ -z "$firewall_rules" ]; then
-    print_status $YELLOW "No firewall rules found"
+    print_status "WARN" "No firewall rules found"
     firewall_details+="<li class='yellow'>No firewall rules found</li>"
 else
     # Process firewall rules
@@ -459,7 +459,7 @@ else
         
         # Check for overly permissive rules (0.0.0.0/0)
         if [[ "$sources" == *"0.0.0.0/0"* ]]; then
-            print_status $RED "WARNING: Firewall rule $name allows traffic from anywhere (0.0.0.0/0)"
+            print_status "FAIL" "WARNING: Firewall rule $name allows traffic from anywhere (0.0.0.0/0)"
             firewall_details+="<li class='red'><strong>WARNING:</strong> Allows traffic from anywhere (0.0.0.0/0)</li>"
             
             if [ -n "$allowed" ]; then
@@ -467,13 +467,13 @@ else
                 # Parse allowed protocols and ports
                 IFS=',' read -ra PROTOCOLS <<< "$allowed"
                 for protocol in "${PROTOCOLS[@]}"; do
-                    print_status $RED "  $protocol open to the internet"
+                    print_status "FAIL" "  $protocol open to the internet"
                     firewall_details+="<li class='red'>$protocol open to the internet</li>"
                 done
                 firewall_details+="</ul>"
             fi
         else
-            print_status $GREEN "Firewall rule $name has restricted source ranges"
+            print_status "PASS" "Firewall rule $name has restricted source ranges"
             firewall_details+="<li class='green'>Has restricted source ranges: $sources</li>"
         fi
         
@@ -492,8 +492,8 @@ add_html_section "$OUTPUT_FILE" "1.2.5 - Ports, protocols, and services inventor
 ((total_checks++))
 
 # Check 1.2.6 - Security features for insecure services/protocols
-print_status $BLUE "1.2.6 - Security features for insecure services/protocols"
-print_status $CYAN "Checking for common insecure services/protocols in firewall rules..."
+print_status "INFO" "1.2.6 - Security features for insecure services/protocols"
+print_status "INFO" "Checking for common insecure services/protocols in firewall rules..."
 
 insecure_services=false
 insecure_details="<p>Analysis of insecure services/protocols in firewall rules:</p><ul>"
@@ -506,28 +506,28 @@ while IFS=$'\t' read -r name direction sources allowed tags network; do
     
     # Check for common insecure ports/protocols
     if [[ "$allowed" == *"tcp:21"* ]]; then
-        print_status $RED "WARNING: Firewall rule $name allows FTP (port 21)"
+        print_status "FAIL" "WARNING: Firewall rule $name allows FTP (port 21)"
         insecure_details+="<li class='red'>Rule $name allows FTP (port 21) - Insecure cleartext protocol</li>"
         insecure_services=true
         rule_has_insecure=true
     fi
     
     if [[ "$allowed" == *"tcp:23"* ]]; then
-        print_status $RED "WARNING: Firewall rule $name allows Telnet (port 23)"
+        print_status "FAIL" "WARNING: Firewall rule $name allows Telnet (port 23)"
         insecure_details+="<li class='red'>Rule $name allows Telnet (port 23) - Insecure cleartext protocol</li>"
         insecure_services=true
         rule_has_insecure=true
     fi
     
     if [[ "$allowed" == *"tcp:1433"* ]]; then
-        print_status $YELLOW "NOTE: Firewall rule $name allows SQL Server (port 1433) - ensure encryption is in use"
+        print_status "WARN" "NOTE: Firewall rule $name allows SQL Server (port 1433) - ensure encryption is in use"
         insecure_details+="<li class='yellow'>Rule $name allows SQL Server (port 1433) - Ensure encryption is in use</li>"
         insecure_services=true
         rule_has_insecure=true
     fi
     
     if [[ "$allowed" == *"tcp:3306"* ]]; then
-        print_status $YELLOW "NOTE: Firewall rule $name allows MySQL (port 3306) - ensure encryption is in use"
+        print_status "WARN" "NOTE: Firewall rule $name allows MySQL (port 3306) - ensure encryption is in use"
         insecure_details+="<li class='yellow'>Rule $name allows MySQL (port 3306) - Ensure encryption is in use</li>"
         insecure_services=true
         rule_has_insecure=true
@@ -538,36 +538,36 @@ done <<< "$firewall_rules"
 insecure_details+="</ul>"
 
 if [ "$insecure_services" = false ]; then
-    print_status $GREEN "No common insecure services/protocols detected in firewall rules"
+    print_status "PASS" "No common insecure services/protocols detected in firewall rules"
     add_html_section "$OUTPUT_FILE" "1.2.6 - Security features for insecure services/protocols" "<p class='green'>No common insecure services/protocols detected in firewall rules</p>" "pass"
     ((passed_checks++))
 else
-    print_status $RED "Insecure services/protocols detected in firewall rules"
+    print_status "FAIL" "Insecure services/protocols detected in firewall rules"
     add_html_section "$OUTPUT_FILE" "1.2.6 - Security features for insecure services/protocols" "$insecure_details" "fail"
     ((failed_checks++))
 fi
 ((total_checks++))
 
 # Check 1.2.7 - Regular review of NSC configurations
-print_status $BLUE "1.2.7 - Regular review of NSC configurations"
-print_status $CYAN "Checking for Security Command Center and monitoring configurations"
+print_status "INFO" "1.2.7 - Regular review of NSC configurations"
+print_status "INFO" "Checking for Security Command Center and monitoring configurations"
 
 # Check if Security Command Center is enabled
 scc_enabled=$(gcloud security-center organizations list 2>/dev/null | wc -l)
 if [ $scc_enabled -gt 0 ]; then
-    print_status $GREEN "Security Command Center is available for monitoring"
+    print_status "PASS" "Security Command Center is available for monitoring"
     add_html_section "$OUTPUT_FILE" "1.2.7 - NSC configuration monitoring" "<p class='green'>Security Command Center is available for monitoring NSC configurations.</p>" "pass"
     ((passed_checks++))
 else
-    print_status $YELLOW "Security Command Center not detected"
+    print_status "WARN" "Security Command Center not detected"
     add_html_section "$OUTPUT_FILE" "1.2.7 - NSC configuration monitoring" "<p class='yellow'>Security Command Center not detected. Consider enabling for automated monitoring.</p>" "warning"
     ((warning_checks++))
 fi
 ((total_checks++))
 
 # Check 1.2.8 - NSC configuration files security
-print_status $BLUE "1.2.8 - NSC configuration files security"
-print_status $CYAN "Checking for IAM policies affecting NSC configuration security"
+print_status "INFO" "1.2.8 - NSC configuration files security"
+print_status "INFO" "Checking for IAM policies affecting NSC configuration security"
 
 # Check for overly permissive IAM policies
 compute_admin_bindings=$(gcloud projects get-iam-policy $DEFAULT_PROJECT --format="value(bindings[?role=='roles/compute.admin'].members[])" 2>/dev/null | wc -l)
@@ -576,11 +576,11 @@ network_admin_bindings=$(gcloud projects get-iam-policy $DEFAULT_PROJECT --forma
 total_admin_bindings=$((compute_admin_bindings + network_admin_bindings))
 
 if [ $total_admin_bindings -gt 5 ]; then
-    print_status $YELLOW "Multiple users/service accounts have network administration privileges"
+    print_status "WARN" "Multiple users/service accounts have network administration privileges"
     add_html_section "$OUTPUT_FILE" "1.2.8 - NSC configuration files security" "<p class='yellow'>Multiple users/service accounts have network administration privileges ($total_admin_bindings total). Review for least privilege compliance.</p>" "warning"
     ((warning_checks++))
 else
-    print_status $GREEN "Limited number of network administrators detected"
+    print_status "PASS" "Limited number of network administrators detected"
     add_html_section "$OUTPUT_FILE" "1.2.8 - NSC configuration files security" "<p class='green'>Limited number of network administrators detected ($total_admin_bindings total).</p>" "pass"
     ((passed_checks++))
 fi
@@ -589,11 +589,11 @@ fi
 #----------------------------------------------------------------------
 # SECTION 4: PCI REQUIREMENT 1.3 - CDE NETWORK ACCESS RESTRICTION
 #----------------------------------------------------------------------
-print_status $CYAN "=== PCI REQUIREMENT 1.3: CDE NETWORK ACCESS RESTRICTION ==="
+print_status "INFO" "=== PCI REQUIREMENT 1.3: CDE NETWORK ACCESS RESTRICTION ==="
 
 # Check 1.3.1 - Inbound traffic to CDE restriction
-print_status $BLUE "1.3.1 - Inbound traffic to CDE restriction"
-print_status $CYAN "Checking for properly restricted inbound traffic to CDE networks..."
+print_status "INFO" "1.3.1 - Inbound traffic to CDE restriction"
+print_status "INFO" "Checking for properly restricted inbound traffic to CDE networks..."
 
 inbound_restriction_details="<p>Analysis of inbound traffic controls for CDE networks:</p><ul>"
 
@@ -644,8 +644,8 @@ add_html_section "$OUTPUT_FILE" "1.3.1 - Inbound traffic to CDE restriction" "$i
 ((warning_checks++))
 
 # Check 1.3.2 - Outbound traffic from CDE restriction
-print_status $BLUE "1.3.2 - Outbound traffic from CDE restriction"
-print_status $CYAN "Checking for properly restricted outbound traffic from CDE networks..."
+print_status "INFO" "1.3.2 - Outbound traffic from CDE restriction"
+print_status "INFO" "Checking for properly restricted outbound traffic from CDE networks..."
 
 outbound_restriction_details="<p>Analysis of outbound traffic controls for CDE networks:</p><ul>"
 
@@ -688,8 +688,8 @@ add_html_section "$OUTPUT_FILE" "1.3.2 - Outbound traffic from CDE restriction" 
 ((warning_checks++))
 
 # Check 1.3.3 - Private IP filtering
-print_status $BLUE "1.3.3 - Private IP filtering"
-print_status $CYAN "Checking for private IP filtering at network boundaries..."
+print_status "INFO" "1.3.3 - Private IP filtering"
+print_status "INFO" "Checking for private IP filtering at network boundaries..."
 
 private_ip_details="<p>Analysis of potential private IP exposure:</p><ul>"
 
@@ -697,16 +697,16 @@ private_ip_details="<p>Analysis of potential private IP exposure:</p><ul>"
 vpc_peerings=$(gcloud compute networks peerings list --format="value(name,network,peerNetwork)" 2>/dev/null)
 
 if [ -z "$vpc_peerings" ]; then
-    print_status $GREEN "No VPC peering connections detected"
+    print_status "PASS" "No VPC peering connections detected"
     private_ip_details+="<li class='green'>No VPC peering connections detected</li>"
 else
-    print_status $YELLOW "VPC peering connections detected - potential private IP routing:"
+    print_status "WARN" "VPC peering connections detected - potential private IP routing:"
     private_ip_details+="<li class='yellow'>VPC peering connections detected:</li><ul>"
     
     while IFS=$'\t' read -r peering_name network peer_network; do
         if [ -z "$peering_name" ]; then continue; fi
         
-        print_status $YELLOW "  Peering: $peering_name ($network <-> $peer_network)"
+        print_status "WARN" "  Peering: $peering_name ($network <-> $peer_network)"
         private_ip_details+="<li>$peering_name: $network ↔ $peer_network</li>"
         
     done <<< "$vpc_peerings"
@@ -718,16 +718,16 @@ fi
 vpn_gateways=$(gcloud compute vpn-gateways list --format="value(name,region)" 2>/dev/null)
 
 if [ -z "$vpn_gateways" ]; then
-    print_status $GREEN "No VPN gateways detected"
+    print_status "PASS" "No VPN gateways detected"
     private_ip_details+="<li class='green'>No VPN gateways detected</li>"
 else
-    print_status $YELLOW "VPN gateways detected - potential private IP routing:"
+    print_status "WARN" "VPN gateways detected - potential private IP routing:"
     private_ip_details+="<li class='yellow'>VPN gateways detected:</li><ul>"
     
     while IFS=$'\t' read -r gw_name region; do
         if [ -z "$gw_name" ]; then continue; fi
         
-        print_status $YELLOW "  VPN Gateway: $gw_name (region: $region)"
+        print_status "WARN" "  VPN Gateway: $gw_name (region: $region)"
         private_ip_details+="<li>$gw_name (region: $region)</li>"
         
     done <<< "$vpn_gateways"
@@ -743,11 +743,11 @@ add_html_section "$OUTPUT_FILE" "1.3.3 - Private IP filtering" "$private_ip_deta
 #----------------------------------------------------------------------
 # SECTION 5: PCI REQUIREMENT 1.4 - NETWORK CONNECTIONS
 #----------------------------------------------------------------------
-print_status $CYAN "=== PCI REQUIREMENT 1.4: NETWORK CONNECTIONS BETWEEN TRUSTED/UNTRUSTED NETWORKS ==="
+print_status "INFO" "=== PCI REQUIREMENT 1.4: NETWORK CONNECTIONS BETWEEN TRUSTED/UNTRUSTED NETWORKS ==="
 
 # Check 1.4.1 - Network connection controls
-print_status $BLUE "1.4.1 - Network connection controls"
-print_status $CYAN "Checking for controls on network connections between trusted and untrusted networks..."
+print_status "INFO" "1.4.1 - Network connection controls"
+print_status "INFO" "Checking for controls on network connections between trusted and untrusted networks..."
 
 connection_controls_details="<p>Analysis of network connections between trusted and untrusted networks:</p><ul>"
 
@@ -803,8 +803,8 @@ add_html_section "$OUTPUT_FILE" "1.4.1 - Network connection controls" "$connecti
 ((total_checks++))
 
 # Check 1.4.2 - Private IP address filtering
-print_status $BLUE "1.4.2 - Private IP address filtering"
-print_status $CYAN "Checking for private IP address filtering controls..."
+print_status "INFO" "1.4.2 - Private IP address filtering"
+print_status "INFO" "Checking for private IP address filtering controls..."
 
 # Check for VPC Service Controls
 vsc_perimeters=""
@@ -825,7 +825,7 @@ fi
 vsc_details="<p>Analysis of private IP address filtering controls:</p><ul>"
 
 if [ -n "$vsc_perimeters" ]; then
-    print_status $GREEN "VPC Service Controls perimeters detected"
+    print_status "PASS" "VPC Service Controls perimeters detected"
     vsc_details+="<li class='green'>VPC Service Controls perimeters detected:</li><ul>"
     
     while IFS=$'\t' read -r perimeter_name title; do
@@ -841,7 +841,7 @@ if [ -n "$vsc_perimeters" ]; then
     add_html_section "$OUTPUT_FILE" "1.4.2 - Private IP address filtering" "$vsc_details" "pass"
     ((passed_checks++))
 else
-    print_status $YELLOW "No VPC Service Controls perimeters detected"
+    print_status "WARN" "No VPC Service Controls perimeters detected"
     vsc_details+="<li class='yellow'>No VPC Service Controls perimeters detected</li>"
     vsc_details+="<li>Consider implementing VPC Service Controls for enhanced private IP filtering</li>"
     
@@ -855,11 +855,11 @@ vsc_details+="</ul>"
 #----------------------------------------------------------------------
 # SECTION 6: PCI REQUIREMENT 1.5 - FIREWALL RULE MANAGEMENT
 #----------------------------------------------------------------------
-print_status $CYAN "=== PCI REQUIREMENT 1.5: NETWORK SECURITY CONTROL RULESET MANAGEMENT ==="
+print_status "INFO" "=== PCI REQUIREMENT 1.5: NETWORK SECURITY CONTROL RULESET MANAGEMENT ==="
 
 # Check 1.5.1 - Firewall rule management
-print_status $BLUE "1.5.1 - Firewall rule management"
-print_status $CYAN "Checking for proper firewall rule management..."
+print_status "INFO" "1.5.1 - Firewall rule management"
+print_status "INFO" "Checking for proper firewall rule management..."
 
 rule_management_details="<p>Analysis of firewall rule management:</p><ul>"
 
@@ -919,12 +919,12 @@ add_html_section "$OUTPUT_FILE" "1.5.1 - Firewall rule management" "$rule_manage
 finalize_html_report "$OUTPUT_FILE" "$total_checks" "$passed_checks" "$failed_checks" "$warning_checks"
 
 echo ""
-print_status $GREEN "======================= ASSESSMENT SUMMARY ======================="
+print_status "PASS" "======================= ASSESSMENT SUMMARY ======================="
 echo "Total checks performed: $total_checks"
 echo "Passed checks: $passed_checks"
 echo "Failed checks: $failed_checks"
 echo "Warning checks: $warning_checks"
-print_status $GREEN "=================================================================="
+print_status "PASS" "=================================================================="
 echo ""
-print_status $CYAN "Report has been generated: $OUTPUT_FILE"
-print_status $GREEN "=================================================================="
+print_status "INFO" "Report has been generated: $OUTPUT_FILE"
+print_status "PASS" "=================================================================="
