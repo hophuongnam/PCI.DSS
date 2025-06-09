@@ -48,14 +48,14 @@ show_help() {
 # Initialize framework environment
 setup_environment
 
+# Define variables
+REQUIREMENT_NUMBER="1"
+
 # Parse command line arguments using shared framework
 parse_common_arguments "$@"
 
 # Register required permissions for this assessment
-register_required_permissions "compute.networks.list" "compute.firewalls.list" "compute.instances.list"
-
-# Define variables
-REQUIREMENT_NUMBER="1"
+register_required_permissions "$REQUIREMENT_NUMBER" "compute.networks.list" "compute.firewalls.list" "compute.instances.list"
 REPORT_TITLE="PCI DSS 4.0.1 - Requirement $REQUIREMENT_NUMBER Compliance Assessment Report (GCP)"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 OUTPUT_DIR="./reports"
@@ -91,6 +91,14 @@ if [ -n "$SPECIFIC_ORG" ]; then
 else
     DEFAULT_ORG=$(gcloud organizations list --format="value(name)" --limit=1 2>/dev/null | sed 's/organizations\///')
 fi
+
+# Function to get clean network names only
+get_clean_networks() {
+    gcloud compute networks list --project="$DEFAULT_PROJECT" --format="value(name)" 2>/dev/null | \
+    grep -E '^[a-z][a-z0-9-]*[a-z0-9]$|^[a-z]$' | \
+    sort | \
+    uniq
+}
 
 # print_status function provided by gcp_common.sh framework library
 # HTML functions now provided by gcp_html_report.sh framework library
@@ -241,7 +249,7 @@ echo ""
 #----------------------------------------------------------------------
 # SECTION 1: PERMISSIONS CHECK
 #----------------------------------------------------------------------
-add_check_result "$OUTPUT_FILE" "info" "GCP Permissions Check" "<p>Verifying access to required GCP services for PCI Requirement 1 assessment...</p>"
+add_section "$OUTPUT_FILE" "permissions" "GCP Permissions Verification" "active"
 
 print_status "INFO" "=== CHECKING REQUIRED GCP PERMISSIONS ==="
 
@@ -314,30 +322,78 @@ failed_checks=0
 #----------------------------------------------------------------------
 # SECTION 2: DETERMINE NETWORKS TO CHECK
 #----------------------------------------------------------------------
-add_check_result "$OUTPUT_FILE" "info" "Target VPC Networks" "<p>Identifying VPC networks for assessment...</p>"
+add_section "$OUTPUT_FILE" "networks" "VPC Network Identification"
 
 print_status "INFO" "=== IDENTIFYING TARGET VPC NETWORKS ==="
 
 if [ "$CDE_NETWORKS" == "all" ]; then
-    TARGET_NETWORKS=$(get_all_networks)
+    # Show console output for user visibility
+    get_all_networks
     GET_NETWORKS_RESULT=$?
     if [ $GET_NETWORKS_RESULT -ne 0 ]; then
         print_status "FAIL" "Failed to retrieve VPC network information. Check your permissions."
         add_check_result "$OUTPUT_FILE" "fail" "Network Identification" "<p class='red'>Failed to retrieve VPC network information.</p>"
         exit 1
     else
+        # Get clean network names using the dedicated function
+        TARGET_NETWORKS=$(get_clean_networks)
+        
+        if [ -z "$TARGET_NETWORKS" ]; then
+            print_status "FAIL" "No valid VPC networks found"
+            add_check_result "$OUTPUT_FILE" "fail" "Network Identification" "<p class='red'>No valid VPC networks found in project.</p>"
+            exit 1
+        fi
+        
         network_count=$(echo "$TARGET_NETWORKS" | wc -l)
-        add_check_result "$OUTPUT_FILE" "info" "Network Identification" "<p>All $network_count VPC networks will be assessed:</p><pre>$TARGET_NETWORKS</pre>"
+        
+        # Format network list for HTML display
+        network_list_html="<ul>"
+        while IFS= read -r network; do
+            if [ -n "$network" ]; then
+                network_list_html+="<li><strong>$network</strong></li>"
+            fi
+        done <<< "$TARGET_NETWORKS"
+        network_list_html+="</ul>"
+        
+        add_check_result "$OUTPUT_FILE" "info" "Network Identification" "<p>All $network_count VPC networks will be assessed:</p>$network_list_html"
     fi
 else
     TARGET_NETWORKS=$(echo $CDE_NETWORKS | tr ',' '\n')
+    
+    # Clean the specified network list
+    CLEAN_NETWORKS=""
+    while IFS= read -r network; do
+        # Trim whitespace and validate network name
+        network=$(echo "$network" | tr -d '[:space:]')
+        if [[ "$network" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]]; then
+            if [ -z "$CLEAN_NETWORKS" ]; then
+                CLEAN_NETWORKS="$network"
+            else
+                CLEAN_NETWORKS="$CLEAN_NETWORKS"$'\n'"$network"
+            fi
+        fi
+    done <<< "$TARGET_NETWORKS"
+    
+    TARGET_NETWORKS="$CLEAN_NETWORKS"
     network_count=$(echo "$TARGET_NETWORKS" | wc -l)
-    add_check_result "$OUTPUT_FILE" "info" "Network Identification" "<p>Assessment will be performed on $network_count specified networks:</p><pre>$TARGET_NETWORKS</pre>"
+    
+    # Format specified networks for HTML display
+    network_list_html="<ul>"
+    while IFS= read -r network; do
+        if [ -n "$network" ]; then
+            network_list_html+="<li><strong>$network</strong></li>"
+        fi
+    done <<< "$TARGET_NETWORKS"
+    network_list_html+="</ul>"
+    
+    add_check_result "$OUTPUT_FILE" "info" "Network Identification" "<p>Assessment will be performed on $network_count specified networks:</p>$network_list_html"
 fi
 
 #----------------------------------------------------------------------
 # SECTION 3: PCI REQUIREMENT 1.2 - NETWORK SECURITY CONTROLS CONFIG
 #----------------------------------------------------------------------
+add_section "$OUTPUT_FILE" "req12" "PCI Requirement 1.2 - Network Security Controls Configuration"
+
 print_status "INFO" "=== PCI REQUIREMENT 1.2: NETWORK SECURITY CONTROLS CONFIGURATION ==="
 
 # Check 1.2.5 - Ports, protocols, and services inventory
@@ -493,6 +549,8 @@ fi
 #----------------------------------------------------------------------
 # SECTION 4: PCI REQUIREMENT 1.3 - CDE NETWORK ACCESS RESTRICTION
 #----------------------------------------------------------------------
+add_section "$OUTPUT_FILE" "req13" "PCI Requirement 1.3 - CDE Network Access Restriction"
+
 print_status "INFO" "=== PCI REQUIREMENT 1.3: CDE NETWORK ACCESS RESTRICTION ==="
 
 # Check 1.3.1 - Inbound traffic to CDE restriction
@@ -647,6 +705,8 @@ add_check_result "$OUTPUT_FILE" "info" "1.3.3 - Private IP filtering" "$private_
 #----------------------------------------------------------------------
 # SECTION 5: PCI REQUIREMENT 1.4 - NETWORK CONNECTIONS
 #----------------------------------------------------------------------
+add_section "$OUTPUT_FILE" "req14" "PCI Requirement 1.4 - Network Connections"
+
 print_status "INFO" "=== PCI REQUIREMENT 1.4: NETWORK CONNECTIONS BETWEEN TRUSTED/UNTRUSTED NETWORKS ==="
 
 # Check 1.4.1 - Network connection controls
@@ -759,6 +819,8 @@ vsc_details+="</ul>"
 #----------------------------------------------------------------------
 # SECTION 6: PCI REQUIREMENT 1.5 - FIREWALL RULE MANAGEMENT
 #----------------------------------------------------------------------
+add_section "$OUTPUT_FILE" "req15" "PCI Requirement 1.5 - Network Security Control Ruleset Management"
+
 print_status "INFO" "=== PCI REQUIREMENT 1.5: NETWORK SECURITY CONTROL RULESET MANAGEMENT ==="
 
 # Check 1.5.1 - Firewall rule management
@@ -820,7 +882,11 @@ add_check_result "$OUTPUT_FILE" "info" "1.5.1 - Firewall rule management" "$rule
 #----------------------------------------------------------------------
 # FINAL REPORT
 #----------------------------------------------------------------------
-finalize_report "$OUTPUT_FILE" "$total_checks" "$passed_checks" "$failed_checks" "$warning_checks"
+# Add summary metrics before finalizing
+add_summary_metrics "$OUTPUT_FILE" "$total_checks" "$passed_checks" "$failed_checks" "$warning_checks"
+
+# Finalize the report
+finalize_report "$OUTPUT_FILE" "$REQUIREMENT_NUMBER"
 
 echo ""
 print_status "PASS" "======================= ASSESSMENT SUMMARY ======================="

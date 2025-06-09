@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PCI DSS 4.0 - Requirement 1 Assessment Report</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: #fff;
+            padding: 30px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            border-radius: 5px;
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #4285f4;
+            padding-bottom: 10px;
+            margin-top: 0;
+        }
+        h2 {
+            color: #4285f4;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 5px;
+            margin-top: 30px;
+        }
+        h3 {
+            color: #555;
+            margin-top: 20px;
+        }
+        .section {
+            margin-bottom: 30px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        .section-header {
+            background-color: #f8f9fa;
+            padding: 15px 20px;
+            cursor: pointer;
+            position: relative;
+            border-bottom: 1px solid #dee2e6;
+            transition: background-color 0.2s;
+        }
+        .section-header:hover {
+            background-color: #e9ecef;
+        }
+        .section-header::after {
+            content: "+";
+            position: absolute;
+            right: 15px;
+            top: 10px;
+            font-weight: bold;
+        }
+        .section-header.active::after {
+            content: "-";
+        }
+        .section-content {
+            padding: 20px;
+            display: none;
+            background-color: #ffffff;
+        }
+        .active + .section-content {
+            display: block;
+        }
+        .check-item {
+            border-left: 4px solid #ddd;
+            padding: 10px;
+            margin-bottom: 10px;
+            background-color: #f9f9f9;
+        }
+        .pass {
+            border-left-color: #4CAF50;
+        }
+        .fail {
+            border-left-color: #f44336;
+        }
+        .warning {
+            border-left-color: #ff9800;
+        }
+        .info {
+            border-left-color: #2196F3;
+        }
+        .green { color: #4CAF50; font-weight: bold; }
+        .red { color: #f44336; font-weight: bold; }
+        .yellow { color: #ff9800; font-weight: bold; }
+        .blue { color: #2196F3; font-weight: bold; }
+        .info-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        .info-table th, .info-table td {
+            padding: 10px;
+            border: 1px solid #ddd;
+            text-align: left;
+        }
+        .info-table th {
+            background-color: #f0f0f0;
+        }
+        .summary-box {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f0f0f0;
+            border-radius: 5px;
+        }
+        .summary-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        .summary-table th, .summary-table td {
+            padding: 10px;
+            border: 1px solid #ddd;
+            text-align: left;
+        }
+        .summary-table th {
+            background-color: #e0e0e0;
+        }
+        .progress-container {
+            width: 100%;
+            background-color: #ddd;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+        .progress-bar {
+            height: 25px;
+            border-radius: 5px;
+            background-color: #4CAF50;
+            text-align: center;
+            line-height: 25px;
+            color: white;
+            font-weight: bold;
+        }
+        .recommendation {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #f0f8ff;
+            border-left: 3px solid #2196F3;
+        }
+        .timestamp {
+            margin-top: 30px;
+            font-size: 0.9em;
+            color: #666;
+            text-align: center;
+        }
+        details {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 0.5em 0.5em 0;
+            margin-bottom: 15px;
+        }
+        summary {
+            font-weight: bold;
+            margin: -0.5em -0.5em 0;
+            padding: 0.5em;
+            cursor: pointer;
+            background-color: #f0f0f0;
+        }
+        details[open] {
+            padding: 0.5em;
+        }
+        details[open] summary {
+            border-bottom: 1px solid #ddd;
+            margin-bottom: 0.5em;
+        }
+        /* Print-friendly styles */
+        @media print {
+            body { background-color: white; }
+            .container { box-shadow: none; padding: 0; }
+            .section-content { display: block; }
+            .section-header::after { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>PCI DSS 4.0.1 - Requirement 1 Compliance Assessment Report (GCP) (Project-specific)</h1>
+        
+        <div class="info-table-container">
+            <table class="info-table">
+                <tr>
+                    <th>Assessment Date</th>
+                    <td>Mon Jun  9 17:10:08 +07 2025</td>
+                </tr>
+                <tr>
+                    <th>GCP Account</th>
+                    <td>hophuongnam@securevectors.com</td>
+                </tr>
+                <tr>
+                    <th>Project</th>
+                    <td>secucollab</td>
+                </tr>
+                <tr>
+                    <th>Permission Coverage</th>
+                    <td>0%</td>
+                </tr>
+            </table>
+        </div>
+        
+        <!-- Summary will be added after assessment completion -->
+        
+        <!-- Report content will be added here -->
+        <div id="report-content">
+
+        <div class="section" id="section-permissions">
+            <div class="section-header active" onclick="toggleSection('permissions')" aria-expanded="true">
+                <h3 style="margin: 0;">GCP Permissions Verification</h3>
+            </div>
+            <div class="section-content" id="content-permissions">
+
+                <div class="check-item pass">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong>✓ Permission Assessment</strong>
+                        <span class="pass">PASS</span>
+                    </div>
+                    <details style="margin-top: 10px;">
+                        <summary>Show Details</summary>
+                        <div style="margin-top: 10px; padding: 10px; background-color: #f9f9f9; border-radius: 3px;">
+                            <pre style="white-space: pre-wrap; margin: 0;"><p class='green'>Sufficient permissions detected. 100% of required permissions are available.</p></pre>
+                        </div>
+                    </details>
+                </div>
+
+            </div> <!-- Close previous section content -->
+        </div> <!-- Close previous section -->
+        
+        <div class="section" id="section-networks">
+            <div class="section-header" onclick="toggleSection('networks')" aria-expanded="false">
+                <h3 style="margin: 0;">VPC Network Identification</h3>
+            </div>
+            <div class="section-content" id="content-networks">
+
+                <div class="check-item info">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong>ℹ Network Identification</strong>
+                        <span class="info">INFO</span>
+                    </div>
+                    <details style="margin-top: 10px;">
+                        <summary>Show Details</summary>
+                        <div style="margin-top: 10px; padding: 10px; background-color: #f9f9f9; border-radius: 3px;">
+                            <pre style="white-space: pre-wrap; margin: 0;"><p>All        4 VPC networks will be assessed:</p><ul><li><strong>default</strong></li><li><strong>latest-monitor</strong></li><li><strong>prism-vpc</strong></li><li><strong>prod-orange</strong></li></ul></pre>
+                        </div>
+                    </details>
+                </div>
+
+            </div> <!-- Close previous section content -->
+        </div> <!-- Close previous section -->
+        
+        <div class="section" id="section-req12">
+            <div class="section-header" onclick="toggleSection('req12')" aria-expanded="false">
+                <h3 style="margin: 0;">PCI Requirement 1.2 - Network Security Controls Configuration</h3>
+            </div>
+            <div class="section-content" id="content-req12">
+
+                <div class="check-item info">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong>ℹ 1.2.5 - Ports, protocols, and services inventory</strong>
+                        <span class="info">INFO</span>
+                    </div>
+                    <details style="margin-top: 10px;">
+                        <summary>Show Details</summary>
+                        <div style="margin-top: 10px; padding: 10px; background-color: #f9f9f9; border-radius: 3px;">
+                            <pre style="white-space: pre-wrap; margin: 0;"><p>Findings for allowed ports, protocols, and services:</p><ul><li><strong>Firewall Rule:</strong> allow-acunetix-scan</li><ul><li><strong>Direction:</strong> INGRESS</li><li><strong>Network:</strong> prod-orange</li><li class='green'>Has restricted source ranges: 35.236.165.63/32</li><li><strong>Target tags:</strong> allow-acunetix-scan</li></ul><li><strong>Firewall Rule:</strong> allow-all-openvas-scan</li><ul><li><strong>Direction:</strong> INGRESS</li><li><strong>Network:</strong> </li><li class='green'>Has restricted source ranges: 10.9.0.14</li><li><strong>Target tags:</strong> prod-orange</li></ul><li><strong>Firewall Rule:</strong> allow-all-openvas-scan-latest-monitro</li><ul><li><strong>Direction:</strong> INGRESS</li><li><strong>Network:</strong> </li><li class='green'>Has restricted source ranges: 10.9.0.14</li><li><strong>Target tags:</strong> latest-monitor</li></ul><li><strong>Firewall Rule:</strong> allow-blue-fim</li><ul><li><strong>Direction:</strong> INGRESS</li><li><strong>Network:</strong> prod-orange</li><li class='green'>Has restricted source ranges: 10.70.0.0/16,10.88.0.0/16,10.51.0.0/16,10.168.0.0/16,10.10.0.0/16,10.12.0.0/16,10.20.0.0/16,10.200.1.0/24,10.14.0.0/16,10.13.0.0/16,34.168.71.238,34.81.72.219,10.15.0.0/16,10.9.0.0/16,10.17.0.0/16,192.168.1.0/24,192.168.2.0/24</li><li><strong>Target tags:</strong> allow-blue-fim</li></ul><li><strong>Firewall Rule:</strong> allow-blue-ftp</li><ul><li><strong>Direction:</strong> INGRESS</li><li><strong>Network:</strong> prod-orange</li><li class='green'>Has restricted source ranges: 34.81.183.13,10.168.0.0/16,10.200.1.2,10.12.0.0/16,10.13.0.0/16,10.14.0.0/16,10.15.0.0/16,10.20.0.0/16,10.51.0.0/16,10.70.0.0/16,10.88.0.0/16,211.20.184.148,123.25.21.181,34.81.72.219,35.194.208.222,34.80.161.112,104.199.247.59,10.17.0.0/16,103.156.40.39/32,10.9.0.0/16,219.85.154.201,125.227.3.133,10.20.30.100,10.20.40.100,34.18.70.53,10.200.1.20,35.229.158.67,192.168.254.1,106.106.2.78,35.212.223.180</li><li><strong>Target tags:</strong> allow-blue-ftp</li></ul><li><strong>Firewall Rule:</strong> allow-collab-aws-ftp</li><ul><li><strong>Direction:</strong> INGRESS</li><li><strong>Network:</strong> prod-orange</li><li class='green'>Has restricted source ranges: 18.142.65.156,54.255.1.29,54.248.22.135,34.57.187.163,54.199.179.253</li><li><strong>Target tags:</strong> allow-blue-ftp</li></ul><li><strong>Firewall Rule:</strong> allow-ftp-to-elk</li><ul><li><strong>Direction:</strong> INGRESS</li><li><strong>Network:</strong> prod-orange</li><li class='green'>Has restricted source ranges: 10.168.1.4</li><li><strong>Target tags:</strong> allow-ftp-to-elk</li></ul><li><strong>Firewall Rule:</strong> allow-gen-dev-to-elk</li><ul><li><strong>Direction:</strong> INGRESS</li><li><strong>Network:</strong> prod-orange</li><li class='green'>Has restricted source ranges: 10.200.1.2</li><li><strong>Target tags:</strong> allow-gen-dev-to-elk</li></ul><li><strong>Firewall Rule:</strong> allow-iap-remote-used</li><ul><li><strong>Direction:</strong> INGRESS</li><li><strong>Network:</strong> </li><li class='green'>Has restricted source ranges: 35.235.240.0/20</li><li><strong>Target tags:</strong> prod-orange</li></ul><li><strong>Firewall Rule:</strong> allow-internet-rdp</li><ul><li><strong>Direction:</strong> INGRESS</li><li><strong>Network:</strong> </li><li class='green'>Has restricted source ranges: 60.250.130.225/32,122.116.225.155/32,13.228.126.249/32,42.114.11.136/32</li><li><strong>Target tags:</strong> prod-orange</li></ul><li><strong>Firewall Rule:</strong> allow-jump-mgmt</li><ul><li><strong>Direction:</strong> INGRESS</li><li><strong>Network:</strong> prod-orange</li><li class='green'>Has restricted source ranges: 10.168.3.3</li><li><strong>Target tags:</strong> mgmt</li></ul><li><strong>Firewall Rule:</strong> allow-office-rdp</li><ul><li><strong>Direction:</strong> INGRESS</li><li><strong>Network:</strong> prod-orange</li><li class='green'>Has restricted source ranges: 220.135.202.218/32,60.250.130.225/32</li><li><strong>Target tags:</strong> allow-office-rdp</li></ul><li><strong>Firewall Rule:</strong> allow-office-to-elk</li><ul><li><strong>Direction:</strong> INGRESS</li><li><strong>Network:</strong> prod-orange</li><li class='green'>Has restricted source ranges: 220.135.202.218/32</li><li><strong>Target tags:</strong> allow-office-to-elk</li></ul><li><strong>Firewall Rule:</strong> allow-opensearch-to-wazuh</li><ul><li><strong>Direction:</strong> INGRESS</li><li><strong>Network:</strong> prod-orange</li><li class='red'><strong>WARNING:</strong> Allows traffic from anywhere (0.0.0.0/0)</li><li><strong>Allowed protocols/ports:</strong></li><ul><li class='red'>tcp:9200 open to the internet</li></ul><li><strong>Target tags:</strong> allow-opensearch-to-wazuh</li></ul><li><strong>Firewall Rule:</strong> allow-orange-snmp</li><ul><li><strong>Direction:</strong> INGRESS</li><li><strong>Network:</strong> prod-orange</li><li class='green'>Has restricted source ranges: 10.168.1.0/24,10.168.4.0/24,10.168.2.0/24,10.168.3.0/24,10.168.11.0/24,192.168.2.0/24,192.168.1.0/24</li><li><strong>Target tags:</strong> zabbix</li></ul><li><strong>Firewall Rule:</strong> allow-prod-gvm-scan</li><ul><li><strong>Direction:</strong> INGRESS</li><li><strong>Network:</strong> </li><li class='green'>Has restricted source ranges: 10.168.2.3</li><li><strong>Target tags:</strong> prod-orange</li></ul><li><strong>Firewall Rule:</strong> allow-qualysscan-jump</li><ul><li><strong>Direction:</strong> INGRESS</li><li><strong>Network:</strong> prod-orange</li><li class='green'>Has restricted source ranges: 64.39.96.0/20,139.87.112.0/23</li><li><strong>Target tags:</strong> allow-qualysscan-jump</li></ul><li><strong>Firewall Rule:</strong> allow-wazuh-to-opensearcch</li><ul><li><strong>Direction:</strong> EGRESS</li><li><strong>Network:</strong> </li><li class='green'>Has restricted source ranges: tcp:5044</li><li><strong>Target tags:</strong> prod-orange</li></ul><li><strong>Firewall Rule:</strong> allow-zabbix-agent-to-server</li><ul><li><strong>Direction:</strong> EGRESS</li><li><strong>Network:</strong> </li><li class='green'>Has restricted source ranges: tcp:10051,udp:161</li><li><strong>Target tags:</strong> prod-orange</li></ul><li><strong>Firewall Rule:</strong> allow-zabbix-server</li><ul><li><strong>Direction:</strong> INGRESS</li><li><strong>Network:</strong> prod-orange</li><li class='green'>Has restricted source ranges: 10.168.1.10</li><li><strong>Target tags:</strong> zabbix-agent</li></ul><li><strong>Firewall Rule:</strong> deny-all-to-test-orange-out</li><ul><li><strong>Direction:</strong> EGRESS</li><li><strong>Network:</strong> </li><li class='green'>Has restricted source ranges: prod-orange</li></ul><li><strong>Firewall Rule:</strong> monitor-allow-mgmt</li><ul><li><strong>Direction:</strong> INGRESS</li><li><strong>Network:</strong> prod-orange</li><li class='green'>Has restricted source ranges: 123.25.21.181,122.116.225.155,103.156.40.39/32</li><li><strong>Target tags:</strong> monitor-allow-mgmt</li></ul><li><strong>Firewall Rule:</strong> monitor-lastest-allow-mgmt</li><ul><li><strong>Direction:</strong> INGRESS</li><li><strong>Network:</strong> </li><li class='green'>Has restricted source ranges: 123.25.21.181,122.116.225.155,103.156.40.39/32,35.194.208.222,34.80.161.112,104.199.247.59</li><li><strong>Target tags:</strong> latest-monitor</li></ul><li><strong>Firewall Rule:</strong> opensearch-to-wazuh</li><ul><li><strong>Direction:</strong> INGRESS</li><li><strong>Network:</strong> prod-orange</li><li class='green'>Has restricted source ranges: 10.200.1.15</li><li><strong>Target tags:</strong> opensearch-to-wazuh</li></ul></ul></pre>
+                        </div>
+                    </details>
+                </div>
+
+                <div class="check-item pass">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong>✓ 1.2.6 - Security features for insecure services/protocols</strong>
+                        <span class="pass">PASS</span>
+                    </div>
+                    <details style="margin-top: 10px;">
+                        <summary>Show Details</summary>
+                        <div style="margin-top: 10px; padding: 10px; background-color: #f9f9f9; border-radius: 3px;">
+                            <pre style="white-space: pre-wrap; margin: 0;"><p class='green'>No common insecure services/protocols detected in firewall rules</p></pre>
+                        </div>
+                    </details>
+                </div>
+
+                <div class="check-item warning">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong>⚠ 1.2.7 - NSC configuration monitoring</strong>
+                        <span class="warning">WARNING</span>
+                    </div>
+                    <details style="margin-top: 10px;">
+                        <summary>Show Details</summary>
+                        <div style="margin-top: 10px; padding: 10px; background-color: #f9f9f9; border-radius: 3px;">
+                            <pre style="white-space: pre-wrap; margin: 0;"><p class='yellow'>Security Command Center not detected. Consider enabling for automated monitoring.</p></pre>
+                        </div>
+                    </details>
+                </div>
+
+                <div class="check-item pass">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong>✓ 1.2.8 - NSC configuration files security</strong>
+                        <span class="pass">PASS</span>
+                    </div>
+                    <details style="margin-top: 10px;">
+                        <summary>Show Details</summary>
+                        <div style="margin-top: 10px; padding: 10px; background-color: #f9f9f9; border-radius: 3px;">
+                            <pre style="white-space: pre-wrap; margin: 0;"><p class='green'>Limited number of network administrators detected (2 total).</p></pre>
+                        </div>
+                    </details>
+                </div>
+
+            </div> <!-- Close previous section content -->
+        </div> <!-- Close previous section -->
+        
+        <div class="section" id="section-req13">
+            <div class="section-header" onclick="toggleSection('req13')" aria-expanded="false">
+                <h3 style="margin: 0;">PCI Requirement 1.3 - CDE Network Access Restriction</h3>
+            </div>
+            <div class="section-content" id="content-req13">
+
+                <div class="check-item warning">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong>⚠ 1.3.1 - Inbound traffic to CDE restriction</strong>
+                        <span class="warning">WARNING</span>
+                    </div>
+                    <details style="margin-top: 10px;">
+                        <summary>Show Details</summary>
+                        <div style="margin-top: 10px; padding: 10px; background-color: #f9f9f9; border-radius: 3px;">
+                            <pre style="white-space: pre-wrap; margin: 0;"><p>Analysis of inbound traffic controls for CDE networks:</p><ul><li><strong>Network:</strong> default</li><ul><li class='green'>No permissive ingress rules found</li></ul><li><strong>Network:</strong> latest-monitor</li><ul><li><strong>Ingress firewall rules:</strong></li><ul><li>allow-all-openvas-scan-latest-monitro</li><li class='green'>Restricted sources: 10.9.0.14</li><li>monitor-lastest-allow-mgmt</li><li class='green'>Restricted sources: 123.25.21.181,122.116.225.155,103.156.40.39/32,35.194.208.222,34.80.161.112,104.199.247.59</li></ul></ul><li><strong>Network:</strong> prism-vpc</li><ul><li class='green'>No permissive ingress rules found</li></ul><li><strong>Network:</strong> prod-orange</li><ul><li><strong>Ingress firewall rules:</strong></li><ul><li>allow-acunetix-scan</li><li class='green'>Restricted sources: 35.236.165.63/32</li><li>allow-all-openvas-scan</li><li class='green'>Restricted sources: 10.9.0.14</li><li>allow-blue-fim</li><li class='green'>Restricted sources: 10.70.0.0/16,10.88.0.0/16,10.51.0.0/16,10.168.0.0/16,10.10.0.0/16,10.12.0.0/16,10.20.0.0/16,10.200.1.0/24,10.14.0.0/16,10.13.0.0/16,34.168.71.238,34.81.72.219,10.15.0.0/16,10.9.0.0/16,10.17.0.0/16,192.168.1.0/24,192.168.2.0/24</li><li>allow-blue-ftp</li><li class='green'>Restricted sources: 34.81.183.13,10.168.0.0/16,10.200.1.2,10.12.0.0/16,10.13.0.0/16,10.14.0.0/16,10.15.0.0/16,10.20.0.0/16,10.51.0.0/16,10.70.0.0/16,10.88.0.0/16,211.20.184.148,123.25.21.181,34.81.72.219,35.194.208.222,34.80.161.112,104.199.247.59,10.17.0.0/16,103.156.40.39/32,10.9.0.0/16,219.85.154.201,125.227.3.133,10.20.30.100,10.20.40.100,34.18.70.53,10.200.1.20,35.229.158.67,192.168.254.1,106.106.2.78,35.212.223.180</li><li>allow-collab-aws-ftp</li><li class='green'>Restricted sources: 18.142.65.156,54.255.1.29,54.248.22.135,34.57.187.163,54.199.179.253</li><li>allow-ftp-to-elk</li><li class='green'>Restricted sources: 10.168.1.4</li><li>allow-gen-dev-to-elk</li><li class='green'>Restricted sources: 10.200.1.2</li><li>allow-iap-remote-used</li><li class='green'>Restricted sources: 35.235.240.0/20</li><li>allow-internet-rdp</li><li class='green'>Restricted sources: 60.250.130.225/32,122.116.225.155/32,13.228.126.249/32,42.114.11.136/32</li><li>allow-jump-mgmt</li><li class='green'>Restricted sources: 10.168.3.3</li><li>allow-office-rdp</li><li class='green'>Restricted sources: 220.135.202.218/32,60.250.130.225/32</li><li>allow-office-to-elk</li><li class='green'>Restricted sources: 220.135.202.218/32</li><li>allow-opensearch-to-wazuh</li><li class='red'>WARNING: Allows traffic from anywhere (0.0.0.0/0)</li><li>allow-orange-snmp</li><li class='green'>Restricted sources: 10.168.1.0/24,10.168.4.0/24,10.168.2.0/24,10.168.3.0/24,10.168.11.0/24,192.168.2.0/24,192.168.1.0/24</li><li>allow-prod-gvm-scan</li><li class='green'>Restricted sources: 10.168.2.3</li><li>allow-qualysscan-jump</li><li class='green'>Restricted sources: 64.39.96.0/20,139.87.112.0/23</li><li>allow-zabbix-server</li><li class='green'>Restricted sources: 10.168.1.10</li><li>monitor-allow-mgmt</li><li class='green'>Restricted sources: 123.25.21.181,122.116.225.155,103.156.40.39/32</li><li>opensearch-to-wazuh</li><li class='green'>Restricted sources: 10.200.1.15</li></ul></ul></ul></pre>
+                        </div>
+                    </details>
+                </div>
+
+                <div class="check-item warning">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong>⚠ 1.3.2 - Outbound traffic from CDE restriction</strong>
+                        <span class="warning">WARNING</span>
+                    </div>
+                    <details style="margin-top: 10px;">
+                        <summary>Show Details</summary>
+                        <div style="margin-top: 10px; padding: 10px; background-color: #f9f9f9; border-radius: 3px;">
+                            <pre style="white-space: pre-wrap; margin: 0;"><p>Analysis of outbound traffic controls for CDE networks:</p><ul><li><strong>Network:</strong> default</li><ul><li class='yellow'>No explicit egress rules found (default allow all)</li></ul><li><strong>Network:</strong> latest-monitor</li><ul><li class='yellow'>No explicit egress rules found (default allow all)</li></ul><li><strong>Network:</strong> prism-vpc</li><ul><li class='yellow'>No explicit egress rules found (default allow all)</li></ul><li><strong>Network:</strong> prod-orange</li><ul><li><strong>Egress firewall rules:</strong></li><ul><li>allow-wazuh-to-opensearcch</li><li class='green'>Restricted destinations: 10.200.1.15</li><li>allow-zabbix-agent-to-server</li><li class='green'>Restricted destinations: 10.168.1.10</li><li>deny-all-to-test-orange-out</li><li class='green'>Restricted destinations: 10.200.1.0/24</li></ul></ul></ul></pre>
+                        </div>
+                    </details>
+                </div>
+
+                <div class="check-item info">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong>ℹ 1.3.3 - Private IP filtering</strong>
+                        <span class="info">INFO</span>
+                    </div>
+                    <details style="margin-top: 10px;">
+                        <summary>Show Details</summary>
+                        <div style="margin-top: 10px; padding: 10px; background-color: #f9f9f9; border-radius: 3px;">
+                            <pre style="white-space: pre-wrap; margin: 0;"><p>Analysis of potential private IP exposure:</p><ul><li class='yellow'>VPC peering connections detected:</li><ul><li>latest-monitor:  ↔ </li><li>prism-vpc:  ↔ </li><li>prod-orange:  ↔ </li></ul><li class='green'>No VPN gateways detected</li></ul></pre>
+                        </div>
+                    </details>
+                </div>
+
+            </div> <!-- Close previous section content -->
+        </div> <!-- Close previous section -->
+        
+        <div class="section" id="section-req14">
+            <div class="section-header" onclick="toggleSection('req14')" aria-expanded="false">
+                <h3 style="margin: 0;">PCI Requirement 1.4 - Network Connections</h3>
+            </div>
+            <div class="section-content" id="content-req14">
+
+                <div class="check-item info">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong>ℹ 1.4.1 - Network connection controls</strong>
+                        <span class="info">INFO</span>
+                    </div>
+                    <details style="margin-top: 10px;">
+                        <summary>Show Details</summary>
+                        <div style="margin-top: 10px; padding: 10px; background-color: #f9f9f9; border-radius: 3px;">
+                            <pre style="white-space: pre-wrap; margin: 0;"><p>Analysis of network connections between trusted and untrusted networks:</p><ul><li><strong>Network:</strong> default</li><ul><li class='yellow'>No Cloud NAT routers detected</li><li class='green'>No instances with external IP addresses detected</li></ul><li><strong>Network:</strong> latest-monitor</li><ul><li class='yellow'>No Cloud NAT routers detected</li><li class='yellow'>Instances with external IP addresses:</li><ul><li>latest-monitor: 104.199.247.59</li><li>latest-monitorconsole: 130.211.250.234</li></ul></ul><li><strong>Network:</strong> prism-vpc</li><ul><li class='yellow'>No Cloud NAT routers detected</li><li class='green'>No instances with external IP addresses detected</li></ul><li><strong>Network:</strong> prod-orange</li><ul><li class='green'>Cloud NAT routers detected (controlled outbound access):</li><ul><li>nat-to-internet (region: asia-east1)</li></ul><li class='yellow'>Instances with external IP addresses:</li><ul><li>fim-01: 34.80.99.177</li><li>ftp-01-new: 104.199.201.104</li><li>gvm-01: 35.221.227.141</li><li>instance-20250307-082919: 35.201.220.128</li><li>jump-01: 34.80.92.211</li><li>wazuh-01: 34.80.173.31</li><li>wazuh-02: 35.201.208.228</li><li>zabbix-01: 104.199.233.119</li><li>spy-collector-linux: 35.194.208.222</li><li>spy-collector-windows: 34.80.161.112</li></ul></ul></ul></pre>
+                        </div>
+                    </details>
+                </div>
+
+                <div class="check-item warning">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong>⚠ 1.4.2 - Private IP address filtering</strong>
+                        <span class="warning">WARNING</span>
+                    </div>
+                    <details style="margin-top: 10px;">
+                        <summary>Show Details</summary>
+                        <div style="margin-top: 10px; padding: 10px; background-color: #f9f9f9; border-radius: 3px;">
+                            <pre style="white-space: pre-wrap; margin: 0;"><p>Analysis of private IP address filtering controls:</p><ul><li class='yellow'>No VPC Service Controls perimeters detected</li><li>Consider implementing VPC Service Controls for enhanced private IP filtering</li></pre>
+                        </div>
+                    </details>
+                </div>
+
+            </div> <!-- Close previous section content -->
+        </div> <!-- Close previous section -->
+        
+        <div class="section" id="section-req15">
+            <div class="section-header" onclick="toggleSection('req15')" aria-expanded="false">
+                <h3 style="margin: 0;">PCI Requirement 1.5 - Network Security Control Ruleset Management</h3>
+            </div>
+            <div class="section-content" id="content-req15">
+
+                <div class="check-item info">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong>ℹ 1.5.1 - Firewall rule management</strong>
+                        <span class="info">INFO</span>
+                    </div>
+                    <details style="margin-top: 10px;">
+                        <summary>Show Details</summary>
+                        <div style="margin-top: 10px; padding: 10px; background-color: #f9f9f9; border-radius: 3px;">
+                            <pre style="white-space: pre-wrap; margin: 0;"><p>Analysis of firewall rule management:</p><ul><li><strong>Total firewall rules:</strong> 24</li><li><strong>Disabled rules:</strong> 4</li><li><strong>High priority rules:</strong> 0</li><li class='yellow'>Consider removing disabled firewall rules to simplify management</li><li class='green'>No default allow rules detected</li></ul></pre>
+                        </div>
+                    </details>
+                </div>
+
+        <div class="summary-box">
+            <h2 style="margin-top: 0;">Assessment Summary</h2>
+            
+            <table class="summary-table">
+                <tr>
+                    <td><strong>Total Checks</strong></td>
+                    <td>10</td>
+                </tr>
+                <tr>
+                    <td><strong>Passed</strong></td>
+                    <td class="green">2</td>
+                </tr>
+                <tr>
+                    <td><strong>Failed</strong></td>
+                    <td class="red">0</td>
+                </tr>
+                <tr>
+                    <td><strong>Warnings/Manual</strong></td>
+                    <td class="yellow">4</td>
+                </tr>
+                <tr>
+                    <td><strong>Compliance Status</strong></td>
+                    <td style="color: #4CAF50; font-weight: bold;">COMPLIANT</td>
+                </tr>
+                <tr>
+                        <td><strong>Permission Coverage</strong></td>
+                        <td>0%</td>
+                    </tr>
+            </table>
+            
+            <div class="progress-container">
+                <div class="progress-bar" style="width: 100%; background-color: #4CAF50;">
+                    100% Compliant
+                </div>
+            </div>
+            
+            <p style="margin-top: 15px; font-size: 0.9em; color: #666;">
+                <strong>Note:</strong> Compliance percentage calculated based on passed/failed checks only. 
+                Warnings require manual verification and are excluded from compliance calculation.
+            </p>
+        </div>
+
+            </div> <!-- Close final section content -->
+        </div> <!-- Close final section -->
+        </div> <!-- Close report-content -->
+        
+        <div class="timestamp">
+            <p><strong>Report Generated:</strong> Mon Jun  9 17:11:05 +07 2025</p>
+            <p><strong>PCI DSS Version:</strong> 4.0.1</p>
+            <p><strong>Requirement:</strong> 1</p>
+        </div>
+    </div> <!-- Close container -->
+    
+    <script>
+        // JavaScript for interactive features
+        function toggleSection(sectionId) {
+            const header = document.querySelector('#section-' + sectionId + ' .section-header');
+            const content = document.querySelector('#content-' + sectionId);
+            
+            if (header && content) {
+                const isActive = header.classList.contains('active');
+                
+                if (isActive) {
+                    header.classList.remove('active');
+                    content.style.display = 'none';
+                    header.setAttribute('aria-expanded', 'false');
+                } else {
+                    header.classList.add('active');
+                    content.style.display = 'block';
+                    header.setAttribute('aria-expanded', 'true');
+                }
+            }
+        }
+        
+        // Auto-expand sections with failed checks
+        document.addEventListener('DOMContentLoaded', function() {
+            const failedSections = document.querySelectorAll('.section .fail');
+            failedSections.forEach(function(failedCheck) {
+                const section = failedCheck.closest('.section');
+                if (section) {
+                    const header = section.querySelector('.section-header');
+                    const content = section.querySelector('.section-content');
+                    if (header && content && !header.classList.contains('active')) {
+                        header.classList.add('active');
+                        content.style.display = 'block';
+                        header.setAttribute('aria-expanded', 'true');
+                    }
+                }
+            });
+            
+            // Show print-friendly message
+            const style = document.createElement('style');
+            style.textContent = '@media print { .no-print { display: none !important; } }';
+            document.head.appendChild(style);
+        });
+        
+        // Keyboard navigation support
+        document.addEventListener('keydown', function(event) {
+            if (event.target.classList.contains('section-header') && (event.key === 'Enter' || event.key === ' ')) {
+                event.preventDefault();
+                event.target.click();
+            }
+        });
+        
+        // Summary metrics are added during report generation
+    </script>
+</body>
+</html>

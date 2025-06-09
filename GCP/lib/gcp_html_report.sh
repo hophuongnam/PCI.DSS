@@ -222,13 +222,15 @@ initialize_report() {
             overflow: hidden;
         }
         .section-header {
-            background-color: #f0f0f0;
-            padding: 10px 15px;
+            background-color: #f8f9fa;
+            padding: 15px 20px;
             cursor: pointer;
             position: relative;
+            border-bottom: 1px solid #dee2e6;
+            transition: background-color 0.2s;
         }
         .section-header:hover {
-            background-color: #e0e0e0;
+            background-color: #e9ecef;
         }
         .section-header::after {
             content: \"+\";
@@ -241,8 +243,9 @@ initialize_report() {
             content: \"-\";
         }
         .section-content {
-            padding: 15px;
+            padding: 20px;
             display: none;
+            background-color: #ffffff;
         }
         .active + .section-content {
             display: block;
@@ -382,13 +385,7 @@ initialize_report() {
             </table>
         </div>
         
-        <div class=\"summary-box\">
-            <h2 style=\"margin-top: 0;\">Summary</h2>
-            <div id=\"summary-statistics\">
-                <!-- Placeholder - will be filled at the end -->
-                <p>Assessment in progress...</p>
-            </div>
-        </div>
+        <!-- Summary will be added after assessment completion -->
         
         <!-- Report content will be added here -->
         <div id=\"report-content\">
@@ -432,10 +429,21 @@ add_section() {
         expanded="true"
     fi
     
-    # Generate collapsible section HTML
-    local section_html="        </div> <!-- Close previous section content if any -->
+    # Generate collapsible section HTML - only close previous section if not the first one
+    local section_html=""
+    
+    # Add section closing tag for previous section (except for the very first section)
+    if [[ -f "${output_file}.section_count" ]]; then
+        section_html+="            </div> <!-- Close previous section content -->
+        </div> <!-- Close previous section -->
         
-        <div class=\"section\" id=\"section-$section_id\">
+"
+    else
+        # Create marker file for first section
+        echo "1" > "${output_file}.section_count"
+    fi
+    
+    section_html+="        <div class=\"section\" id=\"section-$section_id\">
             <div class=\"section-header$active_class\" onclick=\"toggleSection('$section_id')\" aria-expanded=\"$expanded\">
                 <h3 style=\"margin: 0;\">$section_title</h3>
             </div>
@@ -669,7 +677,8 @@ finalize_report() {
     local finalization_time=$(date)
     
     # Close any remaining open sections and report content
-    local finalization_html="        </div> <!-- Close final section content -->
+    local finalization_html="            </div> <!-- Close final section content -->
+        </div> <!-- Close final section -->
         </div> <!-- Close report-content -->
         
         <div class=\"timestamp\">
@@ -730,11 +739,7 @@ finalize_report() {
             }
         });
         
-        // Update summary placeholder if it exists
-        const summaryPlaceholder = document.querySelector('#summary-statistics');
-        if (summaryPlaceholder && summaryPlaceholder.textContent.includes('Assessment in progress')) {
-            summaryPlaceholder.innerHTML = '<p>Assessment completed. Detailed metrics shown below.</p>';
-        }
+        // Summary metrics are added during report generation
     </script>
 </body>
 </html>"
@@ -742,6 +747,10 @@ finalize_report() {
     if html_append "$output_file" "$finalization_html"; then
         print_status "PASS" "HTML report finalized: $output_file"
         log_debug "Report closed with interactive JavaScript"
+        
+        # Clean up temporary marker file
+        [[ -f "${output_file}.section_count" ]] && rm -f "${output_file}.section_count"
+        
         return 0
     else
         return 1
