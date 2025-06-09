@@ -21,7 +21,7 @@ fi
 
 # Load required shared libraries
 if [[ "$GCP_COMMON_LOADED" != "true" ]]; then
-    local common_lib="$(dirname "${BASH_SOURCE[0]}")/gcp_common.sh"
+    common_lib="$(dirname "${BASH_SOURCE[0]}")/gcp_common.sh"
     if [[ -f "$common_lib" ]]; then
         source "$common_lib" || {
             echo "Error: Failed to load gcp_common.sh" >&2
@@ -35,7 +35,7 @@ fi
 
 # Load permissions library (optional)
 if [[ "$GCP_PERMISSIONS_LOADED" != "true" ]]; then
-    local permissions_lib="$(dirname "${BASH_SOURCE[0]}")/gcp_permissions.sh"
+    permissions_lib="$(dirname "${BASH_SOURCE[0]}")/gcp_permissions.sh"
     if [[ -f "$permissions_lib" ]]; then
         source "$permissions_lib" || {
             print_status "WARN" "gcp_permissions.sh could not be loaded"
