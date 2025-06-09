@@ -16,7 +16,7 @@ source "$LIB_DIR/gcp_html_report.sh" || exit 1
 REQUIREMENT_NUMBER="7"
 
 # Initialize environment
-setup_environment || exit 1
+setup_environment "requirement7_assessment.log" || exit 1
 
 # Parse command line arguments using shared function
 parse_common_arguments "$@"
@@ -29,27 +29,30 @@ esac
 load_requirement_config "${REQUIREMENT_NUMBER}"
 
 # Validate scope and setup project context using shared library
-setup_assessment_scope || exit 1
+setup_assessment_scope "$SCOPE" "$PROJECT_ID" "$ORG_ID" || exit 1
+
+# Validate GCP environment
+validate_prerequisites || exit 1
+
+# Register required permissions using shared library
+register_required_permissions "$REQUIREMENT_NUMBER" \
+    "resourcemanager.projects.getIamPolicy" \
+    "iam.serviceAccounts.list" \
+    "iam.roles.list" \
+    "compute.networks.list" \
+    "compute.subnetworks.list" \
+    "iap.web.getIamPolicy" \
+    "compute.firewalls.list" \
+    "storage.buckets.getIamPolicy"
 
 # Check permissions using shared library
-check_required_permissions "iam.roles.list" "iam.serviceAccounts.list" || exit 1
+if ! check_all_permissions; then
+    prompt_continue_limited || exit 1
+fi
 
 # Initialize HTML report using shared library
-# Set output file path
 OUTPUT_FILE="${REPORT_DIR}/pci_req${REQUIREMENT_NUMBER}_report_$(date +%Y%m%d_%H%M%S).html"
-
-# Initialize HTML report using shared library
 initialize_report "$OUTPUT_FILE" "PCI DSS 4.0.1 - Requirement $REQUIREMENT_NUMBER Compliance Assessment Report" "${REQUIREMENT_NUMBER}"
-
-
-
-
-
-
-
-
-
-
 
 print_status "INFO" "============================================="
 print_status "INFO" "  PCI DSS 4.0.1 - Requirement 7 (GCP)"
@@ -57,7 +60,6 @@ print_status "INFO" "============================================="
 echo ""
 
 # Display scope information using shared library
-# Display scope information using shared library - now handled in print_status calls
 print_status "INFO" "Assessment scope: ${ASSESSMENT_SCOPE:-project}"
 if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
     print_status "INFO" "Organization ID: ${ORG_ID}"
@@ -69,756 +71,324 @@ echo ""
 echo "Starting assessment at $(date)"
 echo ""
 
-# Reset counters for actual compliance checks
-total_checks=0
-passed_checks=0
-warning_checks=0
-failed_checks=0
-
-
-# Function to check IAM policies for overly permissive permissions
-check_overly_permissive_policies() {
-    local details=""
-    local found_issues=false
+# Function to assess access governance and overly permissive policies
+assess_access_governance() {
+    local project_id="$1"
+    debug_log "Assessing access governance for project: $project_id"
     
-    details+="<p>Analysis of IAM policies for overly permissive permissions:</p>"
+    # 7.1.1 - Security policies and operational procedures for access control
+    add_check_result "7.1.1 - Access control policies documentation" "MANUAL" \
+        "Verify documented security policies for Requirement 7 access controls are maintained, up to date, in use, and known to affected parties"
     
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        details+="<p><strong>Organization-wide IAM analysis:</strong></p>"
+    # 7.1.2 - Roles and responsibilities for access control
+    add_check_result "7.1.2 - Access control roles and responsibilities" "MANUAL" \
+        "Verify roles and responsibilities for Requirement 7 activities are documented, assigned, and understood"
+    
+    # Check for overly permissive IAM policies
+    local project_policy
+    project_policy=$(gcloud projects get-iam-policy "$project_id" --format="json" 2>/dev/null)
+    
+    if [[ -n "$project_policy" ]]; then
+        # Check for project owner roles
+        local owner_count
+        owner_count=$(echo "$project_policy" | jq -r '.bindings[] | select(.role=="roles/owner") | .members[]' 2>/dev/null | wc -l)
         
-        # Check organization-level IAM policies
-        if [ -n "$DEFAULT_ORG" ]; then
-            local org_policy=$(gcloud organizations get-iam-policy "organizations/$DEFAULT_ORG" --format="json" 2>/dev/null)
-            
-            if [ -n "$org_policy" ]; then
-                details+="<p>Organization-level IAM analysis:</p><ul>"
-                
-                # Check for overly broad roles
-                local owner_bindings=$(echo "$org_policy" | jq -r '.bindings[] | select(.role=="roles/owner") | .members[]' 2>/dev/null)
-                local editor_bindings=$(echo "$org_policy" | jq -r '.bindings[] | select(.role=="roles/editor") | .members[]' 2>/dev/null)
-                
-                if [ -n "$owner_bindings" ]; then
-                    local owner_count=$(echo "$owner_bindings" | wc -l)
-                    details+="<li class='red'>Organization Owner role assigned to $owner_count members - this provides excessive privileges</li>"
-                    found_issues=true
-                fi
-                
-                if [ -n "$editor_bindings" ]; then
-                    local editor_count=$(echo "$editor_bindings" | wc -l)
-                    details+="<li class='yellow'>Organization Editor role assigned to $editor_count members - consider using more specific roles</li>"
-                    found_issues=true
-                fi
-                
-                details+="</ul>"
-            fi
+        if [[ "$owner_count" -gt 2 ]]; then
+            add_check_result "Project owner role assignment" "FAIL" \
+                "Project has $owner_count owners (recommend ≤2) - excessive administrative privileges violate least privilege principle"
+        else
+            add_check_result "Project owner role assignment" "PASS" \
+                "Project owner roles appropriately limited ($owner_count owners)"
         fi
         
-        # Check project-level policies across all projects
-        local projects=$(get_projects_in_scope)
-        details+="<p>Project-level IAM analysis across organization:</p><table>"
-        details+="<tr><th>Project</th><th>Owner Bindings</th><th>Editor Bindings</th><th>External Users</th><th>Status</th></tr>"
+        # Check for project editor roles
+        local editor_count
+        editor_count=$(echo "$project_policy" | jq -r '.bindings[] | select(.role=="roles/editor") | .members[]' 2>/dev/null | wc -l)
         
-        for project in $projects; do
-            local project_policy=$(gcloud projects get-iam-policy "$project" --format="json" 2>/dev/null)
-            
-            if [ -n "$project_policy" ]; then
-                local project_owner_count=$(echo "$project_policy" | jq -r '.bindings[] | select(.role=="roles/owner") | .members[]' 2>/dev/null | wc -l)
-                local project_editor_count=$(echo "$project_policy" | jq -r '.bindings[] | select(.role=="roles/editor") | .members[]' 2>/dev/null | wc -l)
-                local external_users=$(echo "$project_policy" | jq -r '.bindings[].members[]' 2>/dev/null | grep -v "@.*\\.gserviceaccount\\.com" | grep -v "group:" | grep -v "domain:" | wc -l)
-                
-                local status_class="green"
-                local status_text="Good"
-                
-                if [ "$project_owner_count" -gt 2 ]; then
-                    status_class="red"
-                    status_text="High Risk"
-                    found_issues=true
-                elif [ "$project_editor_count" -gt 5 ] || [ "$external_users" -gt 3 ]; then
-                    status_class="yellow"
-                    status_text="Review Needed"
-                    found_issues=true
-                fi
-                
-                details+="<tr><td>$project</td><td>$project_owner_count</td><td>$project_editor_count</td><td>$external_users</td><td class='$status_class'>$status_text</td></tr>"
-            fi
-        done
-        
-        details+="</table>"
-    else
-        # Single project analysis
-        local project_policy=$(gcloud projects get-iam-policy "$DEFAULT_PROJECT" --format="json" 2>/dev/null)
-        
-        if [ -n "$project_policy" ]; then
-            details+="<p>Project-level IAM analysis:</p><ul>"
-            
-            # Check for overly broad roles at project level
-            local project_owner_bindings=$(echo "$project_policy" | jq -r '.bindings[] | select(.role=="roles/owner") | .members[]' 2>/dev/null)
-            local project_editor_bindings=$(echo "$project_policy" | jq -r '.bindings[] | select(.role=="roles/editor") | .members[]' 2>/dev/null)
-            
-            if [ -n "$project_owner_bindings" ]; then
-                local project_owner_count=$(echo "$project_owner_bindings" | wc -l)
-                details+="<li class='red'>Project Owner role assigned to $project_owner_count members - this provides excessive privileges</li>"
-                found_issues=true
-                
-                # List the members with owner role
-                details+="<ul>"
-                echo "$project_owner_bindings" | while read -r member; do
-                    details+="<li>$member</li>"
-                done
-                details+="</ul>"
-            fi
-            
-            if [ -n "$project_editor_bindings" ]; then
-                local project_editor_count=$(echo "$project_editor_bindings" | wc -l)
-                details+="<li class='yellow'>Project Editor role assigned to $project_editor_count members - consider using more specific roles</li>"
-                found_issues=true
-            fi
-            
-            # Check for external users (non-domain users)
-            local external_users=$(echo "$project_policy" | jq -r '.bindings[].members[]' 2>/dev/null | grep -v "@.*\\.gserviceaccount\\.com" | grep -v "group:" | grep -v "domain:" | head -10)
-            
-            if [ -n "$external_users" ]; then
-                details+="<li class='yellow'>External users detected in project IAM:</li><ul>"
-                echo "$external_users" | while read -r user; do
-                    details+="<li>$user</li>"
-                done
-                details+="</ul>"
-                found_issues=true
-            fi
-            
-            details+="</ul>"
+        if [[ "$editor_count" -gt 5 ]]; then
+            add_check_result "Project editor role assignment" "WARN" \
+                "Project has $editor_count editors (recommend ≤5) - consider using more specific roles for access control"
+        else
+            add_check_result "Project editor role assignment" "PASS" \
+                "Project editor roles appropriately managed ($editor_count editors)"
         fi
-    fi
-    
-    echo "$details"
-    if [ "$found_issues" = true ]; then
-        return 1
+        
+        # Check for external users
+        local external_users
+        external_users=$(echo "$project_policy" | jq -r '.bindings[].members[]' 2>/dev/null | grep -v "@.*\\.gserviceaccount\\.com" | grep -v "group:" | grep -v "domain:" | wc -l)
+        
+        if [[ "$external_users" -gt 3 ]]; then
+            add_check_result "External user access" "WARN" \
+                "Project has $external_users external users - review access controls for external entities per 7.2.1"
+        else
+            add_check_result "External user access" "PASS" \
+                "External user access appropriately limited ($external_users external users)"
+        fi
     else
-        return 0
+        add_check_result "IAM policy analysis" "FAIL" \
+            "Cannot retrieve IAM policy for project $project_id - verify permissions"
     fi
 }
 
-print_status "INFO" "============================================="
-print_status "INFO" "  PCI DSS 4.0.1 - Requirement 7 (GCP)"
-print_status "INFO" "============================================="
-echo ""
-
-# Display scope information using shared library
-# Display scope information using shared library - now handled in print_status calls
-print_status "INFO" "Assessment scope: ${ASSESSMENT_SCOPE:-project}"
-if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
-    print_status "INFO" "Organization ID: ${ORG_ID}"
-else
-    print_status "INFO" "Project ID: ${PROJECT_ID}"
-fi
-
-echo ""
-echo "Starting assessment at $(date)"
-echo ""
-
-# Reset counters for actual compliance checks
-total_checks=0
-passed_checks=0
-warning_checks=0
-failed_checks=0
-
-
-# Function to check for inactive service accounts
-check_inactive_service_accounts() {
-    local details=""
-    local found_inactive=false
-    local threshold_days=90
+# Function to assess role-based access control and service account management
+assess_role_based_access() {
+    local project_id="$1"
+    debug_log "Assessing role-based access control for project: $project_id"
     
-    details+="<p>Analysis of service account activity (inactive for more than $threshold_days days):</p>"
+    # 7.2.1 - Role-based access control implementation
+    add_check_result "7.2.1 - Role-based access control system" "MANUAL" \
+        "Verify role-based access control is implemented and enforced across all system components"
     
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        details+="<p><strong>Organization-wide service account analysis:</strong></p>"
-        
-        local projects=$(get_projects_in_scope)
-        details+="<table><tr><th>Project</th><th>Service Account</th><th>Display Name</th><th>Keys</th><th>Status</th></tr>"
-        
-        for project in $projects; do
-            local service_accounts=$(gcloud iam service-accounts list --project="$project" --format="value(email,displayName,disabled)" 2>/dev/null)
-            
-            if [ -n "$service_accounts" ]; then
-                local current_time=$(date +%s)
-                
-                while IFS=$'\t' read -r sa_email display_name disabled; do
-                    if [ -z "$sa_email" ]; then
-                        continue
-                    fi
-                    
-                    # Get service account keys
-                    local sa_keys=$(gcloud iam service-accounts keys list --iam-account="$sa_email" --format="json" 2>/dev/null)
-                    
-                    if [ -n "$sa_keys" ]; then
-                        local key_count=$(echo "$sa_keys" | jq -r '. | length' 2>/dev/null)
-                        local old_keys=0
-                        
-                        if [ "$key_count" -gt 0 ]; then
-                            for key_info in $(echo "$sa_keys" | jq -c '.[]'); do
-                                local create_time=$(echo "$key_info" | jq -r '.validAfterTime' 2>/dev/null)
-                                local key_type=$(echo "$key_info" | jq -r '.keyType' 2>/dev/null)
-                                
-                                if [ "$key_type" != "SYSTEM_MANAGED" ]; then
-                                    # Convert to epoch time
-                                    local create_epoch=$(date -d "$create_time" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$create_time" +%s 2>/dev/null)
-                                    
-                                    if [ -n "$create_epoch" ]; then
-                                        local days_old=$(( (current_time - create_epoch) / 86400 ))
-                                        
-                                        if [ "$days_old" -gt "$threshold_days" ]; then
-                                            ((old_keys++))
-                                        fi
-                                    fi
-                                fi
-                            done
-                        fi
-                        
-                        # Determine status
-                        local status_class="green"
-                        local status_text="Active"
-                        
-                        if [ "$disabled" = "True" ]; then
-                            status_class="yellow"
-                            status_text="Disabled (good for unused accounts)"
-                        elif [ "$old_keys" -gt 0 ]; then
-                            status_class="red"
-                            status_text="$old_keys old keys (>$threshold_days days)"
-                            found_inactive=true
-                        elif [ "$key_count" -eq 0 ]; then
-                            status_text="No user-managed keys"
-                        fi
-                        
-                        details+="<tr><td>$project</td><td>$sa_email</td><td>$display_name</td><td>$key_count total</td><td class='$status_class'>$status_text</td></tr>"
-                    fi
-                    
-                done <<< "$service_accounts"
-            fi
-        done
-        
-        details+="</table>"
-    else
-        # Single project analysis
-        local service_accounts=$(gcloud iam service-accounts list --format="value(email,displayName,disabled)" 2>/dev/null)
-        
-        if [ -z "$service_accounts" ]; then
-            details+="<p>No service accounts found in project $DEFAULT_PROJECT.</p>"
-            echo "$details"
-            return
-        fi
-        
-        details+="<table><tr><th>Service Account</th><th>Display Name</th><th>Keys</th><th>Status</th></tr>"
-        
+    # Check service account management and lifecycle
+    local service_accounts
+    service_accounts=$(gcloud iam service-accounts list --project="$project_id" --format="value(email,displayName,disabled)" 2>/dev/null)
+    
+    if [[ -n "$service_accounts" ]]; then
+        local total_accounts=0
+        local disabled_accounts=0
+        local accounts_with_old_keys=0
+        local threshold_days=90
         local current_time=$(date +%s)
         
         while IFS=$'\t' read -r sa_email display_name disabled; do
-            # Get service account keys
-            local sa_keys=$(gcloud iam service-accounts keys list --iam-account="$sa_email" --format="json" 2>/dev/null)
+            ((total_accounts++))
             
-            if [ -n "$sa_keys" ]; then
-                local key_count=$(echo "$sa_keys" | jq -r '. | length' 2>/dev/null)
-                local old_keys=0
-                
-                if [ "$key_count" -gt 0 ]; then
-                    for key_info in $(echo "$sa_keys" | jq -c '.[]'); do
-                        local create_time=$(echo "$key_info" | jq -r '.validAfterTime' 2>/dev/null)
-                        local key_type=$(echo "$key_info" | jq -r '.keyType' 2>/dev/null)
-                        
-                        if [ "$key_type" != "SYSTEM_MANAGED" ]; then
-                            # Convert to epoch time
-                            local create_epoch=$(date -d "$create_time" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$create_time" +%s 2>/dev/null)
-                            
-                            if [ -n "$create_epoch" ]; then
-                                local days_old=$(( (current_time - create_epoch) / 86400 ))
-                                
-                                if [ "$days_old" -gt "$threshold_days" ]; then
-                                    ((old_keys++))
-                                fi
-                            fi
-                        fi
-                    done
-                fi
-                
-                # Determine status
-                local status_class="green"
-                local status_text="Active"
-                
-                if [ "$disabled" = "True" ]; then
-                    status_class="yellow"
-                    status_text="Disabled (good for unused accounts)"
-                elif [ "$old_keys" -gt 0 ]; then
-                    status_class="red"
-                    status_text="$old_keys old keys (>$threshold_days days)"
-                    found_inactive=true
-                elif [ "$key_count" -eq 0 ]; then
-                    status_text="No user-managed keys"
-                fi
-                
-                details+="<tr><td>$sa_email</td><td>$display_name</td><td>$key_count total</td><td class='$status_class'>$status_text</td></tr>"
-            fi
-            
-        done <<< "$service_accounts"
-        
-        details+="</table>"
-    fi
-    
-    if [ "$found_inactive" = false ]; then
-        details+="<p class='green'>No service accounts with old keys detected. All service accounts appear to be properly managed.</p>"
-    fi
-    
-    echo "$details"
-    if [ "$found_inactive" = true ]; then
-        return 1
-    else
-        return 0
-    fi
-}
-
-print_status "INFO" "============================================="
-print_status "INFO" "  PCI DSS 4.0.1 - Requirement 7 (GCP)"
-print_status "INFO" "============================================="
-echo ""
-
-# Display scope information using shared library
-# Display scope information using shared library - now handled in print_status calls
-print_status "INFO" "Assessment scope: ${ASSESSMENT_SCOPE:-project}"
-if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
-    print_status "INFO" "Organization ID: ${ORG_ID}"
-else
-    print_status "INFO" "Project ID: ${PROJECT_ID}"
-fi
-
-echo ""
-echo "Starting assessment at $(date)"
-echo ""
-
-# Reset counters for actual compliance checks
-total_checks=0
-passed_checks=0
-warning_checks=0
-failed_checks=0
-
-
-# Function to check least privilege implementation
-check_least_privilege() {
-    local details=""
-    local found_violations=false
-    
-    details+="<p>Analysis of least privilege implementation:</p>"
-    
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        details+="<p><strong>Organization-wide least privilege analysis:</strong></p>"
-        
-        local projects=$(get_projects_in_scope)
-        local total_primitive_roles=0
-        local total_custom_roles=0
-        local total_projects=0
-        
-        for project in $projects; do
-            ((total_projects++))
-            
-            local project_policy=$(gcloud projects get-iam-policy "$project" --format="json" 2>/dev/null)
-            
-            if [ -n "$project_policy" ]; then
-                # Count primitive roles (Owner, Editor, Viewer)
-                local primitive_count=$(echo "$project_policy" | jq -r '.bindings[] | select(.role | startswith("roles/owner") or startswith("roles/editor") or startswith("roles/viewer")) | .role' 2>/dev/null | wc -l)
-                total_primitive_roles=$((total_primitive_roles + primitive_count))
-                
-                # Check for custom roles
-                local custom_count=$(gcloud iam roles list --project="$project" --format="value(name)" 2>/dev/null | wc -l)
-                total_custom_roles=$((total_custom_roles + custom_count))
-            fi
-        done
-        
-        details+="<p>Summary across $total_projects projects:</p><ul>"
-        details+="<li>Total primitive role bindings: $total_primitive_roles</li>"
-        details+="<li>Total custom roles defined: $total_custom_roles</li>"
-        details+="</ul>"
-        
-        if [ "$total_primitive_roles" -gt "$((total_projects * 3))" ]; then
-            details+="<p class='yellow'>High number of primitive roles in use. Consider replacing with more specific roles.</p>"
-            found_violations=true
-        fi
-        
-        if [ "$total_custom_roles" -lt "$((total_projects / 2))" ]; then
-            details+="<p class='yellow'>Few custom roles found. Consider creating custom roles for specific job functions.</p>"
-            found_violations=true
-        fi
-    else
-        # Single project analysis
-        local project_policy=$(gcloud projects get-iam-policy "$DEFAULT_PROJECT" --format="json" 2>/dev/null)
-        
-        if [ -n "$project_policy" ]; then
-            # Count primitive roles (Owner, Editor, Viewer)
-            local primitive_roles=$(echo "$project_policy" | jq -r '.bindings[] | select(.role | startswith("roles/owner") or startswith("roles/editor") or startswith("roles/viewer")) | .role' 2>/dev/null | sort | uniq -c)
-            
-            if [ -n "$primitive_roles" ]; then
-                details+="<p class='yellow'>Primitive roles in use (consider replacing with more specific roles):</p><ul>"
-                echo "$primitive_roles" | while read -r count role; do
-                    details+="<li>$role: $count bindings</li>"
-                done
-                details+="</ul>"
-                found_violations=true
-            fi
-            
-            # Check for custom roles
-            local custom_roles=$(gcloud iam roles list --project="$DEFAULT_PROJECT" --format="value(name,title)" 2>/dev/null)
-            
-            if [ -n "$custom_roles" ]; then
-                details+="<p class='green'>Custom roles defined for least privilege:</p><ul>"
-                while IFS=$'\t' read -r role_name title; do
-                    details+="<li>$role_name ($title)</li>"
-                done <<< "$custom_roles"
-                details+="</ul>"
-            else
-                details+="<p class='yellow'>No custom roles found. Consider creating custom roles for specific job functions to implement least privilege.</p>"
-                found_violations=true
-            fi
-        fi
-    fi
-    
-    # Check Compute Engine instances for OS Login across scope
-    local instances
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        instances=$(run_gcp_command_across_projects "gcloud compute instances list" "--format='value(name,zone,metadata.items)'")
-    else
-        instances=$(gcloud compute instances list --format="value(name,zone,metadata.items)" 2>/dev/null)
-    fi
-    
-    if [ -n "$instances" ]; then
-        details+="<p>Compute Engine OS Login analysis:</p><ul>"
-        
-        local os_login_enabled=0
-        local total_instances=0
-        
-        while IFS=$'\t' read -r instance_info; do
-            if [ -z "$instance_info" ]; then
+            if [[ "$disabled" == "True" ]]; then
+                ((disabled_accounts++))
                 continue
             fi
             
-            ((total_instances++))
+            # Check for old service account keys
+            local sa_keys
+            sa_keys=$(gcloud iam service-accounts keys list --iam-account="$sa_email" --format="json" 2>/dev/null)
             
-            # Check if OS Login is enabled
-            if echo "$instance_info" | grep -q "enable-oslogin.*TRUE"; then
-                ((os_login_enabled++))
+            if [[ -n "$sa_keys" ]]; then
+                local old_keys=0
+                for key_info in $(echo "$sa_keys" | jq -c '.[]' 2>/dev/null); do
+                    local key_type
+                    key_type=$(echo "$key_info" | jq -r '.keyType' 2>/dev/null)
+                    
+                    if [[ "$key_type" != "SYSTEM_MANAGED" ]]; then
+                        local create_time
+                        create_time=$(echo "$key_info" | jq -r '.validAfterTime' 2>/dev/null)
+                        local create_epoch
+                        create_epoch=$(date -d "$create_time" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$create_time" +%s 2>/dev/null)
+                        
+                        if [[ -n "$create_epoch" ]]; then
+                            local days_old=$(( (current_time - create_epoch) / 86400 ))
+                            if [[ "$days_old" -gt "$threshold_days" ]]; then
+                                ((old_keys++))
+                            fi
+                        fi
+                    fi
+                done
+                
+                if [[ "$old_keys" -gt 0 ]]; then
+                    ((accounts_with_old_keys++))
+                fi
             fi
-        done <<< "$instances"
+        done <<< "$service_accounts"
         
-        if [ "$os_login_enabled" -eq "$total_instances" ]; then
-            details+="<li class='green'>All $total_instances instances have OS Login enabled</li>"
-        elif [ "$os_login_enabled" -gt 0 ]; then
-            details+="<li class='yellow'>$os_login_enabled out of $total_instances instances have OS Login enabled</li>"
-            found_violations=true
+        # Report service account management results
+        add_check_result "Service account inventory" "INFO" \
+            "Project has $total_accounts service accounts ($disabled_accounts disabled)"
+        
+        if [[ "$accounts_with_old_keys" -gt 0 ]]; then
+            add_check_result "Service account key rotation" "FAIL" \
+                "$accounts_with_old_keys service accounts have keys older than $threshold_days days - violates access management requirements"
         else
-            details+="<li class='red'>None of $total_instances instances have OS Login enabled</li>"
-            found_violations=true
+            add_check_result "Service account key rotation" "PASS" \
+                "All service account keys are within acceptable age limits (≤$threshold_days days)"
         fi
         
-        details+="</ul>"
-    fi
-    
-    echo "$details"
-    if [ "$found_violations" = true ]; then
-        return 1
+        # Check for excessive service accounts
+        if [[ "$total_accounts" -gt 20 ]]; then
+            add_check_result "Service account proliferation" "WARN" \
+                "Project has $total_accounts service accounts - review for compliance with least privilege principle"
+        else
+            add_check_result "Service account proliferation" "PASS" \
+                "Service account count within reasonable limits ($total_accounts accounts)"
+        fi
     else
-        return 0
+        add_check_result "Service account analysis" "WARN" \
+            "No service accounts found in project $project_id - verify service configuration"
     fi
 }
 
-print_status "INFO" "============================================="
-print_status "INFO" "  PCI DSS 4.0.1 - Requirement 7 (GCP)"
-print_status "INFO" "============================================="
-echo ""
-
-# Display scope information using shared library
-# Display scope information using shared library - now handled in print_status calls
-print_status "INFO" "Assessment scope: ${ASSESSMENT_SCOPE:-project}"
-if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
-    print_status "INFO" "Organization ID: ${ORG_ID}"
-else
-    print_status "INFO" "Project ID: ${PROJECT_ID}"
-fi
-
-echo ""
-echo "Starting assessment at $(date)"
-echo ""
-
-# Reset counters for actual compliance checks
-total_checks=0
-passed_checks=0
-warning_checks=0
-failed_checks=0
-
-
-# Function to check access control systems configuration
-check_access_control_systems() {
-    local details=""
-    local found_issues=false
+# Function to assess access control systems with VPC and IAP integration
+assess_access_control_systems() {
+    local project_id="$1"
+    debug_log "Assessing access control systems for project: $project_id"
     
-    details+="<p>Analysis of access control systems configuration:</p>"
+    # 7.2.2 - Access is assigned based on job classification and function
+    add_check_result "7.2.2 - Job function-based access assignment" "MANUAL" \
+        "Verify access is assigned to users based on job classification and function with documented approval"
     
-    # Check VPC firewall rules for default-deny across scope
+    # 7.2.3 - Default deny access control
+    add_check_result "7.2.3 - Default deny access control" "MANUAL" \
+        "Verify access control systems are configured with default-deny rule"
+    
+    # Check VPC firewall rules for default-deny implementation
     local firewall_rules
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        firewall_rules=$(run_gcp_command_across_projects "gcloud compute firewall-rules list" "--format='value(name,direction,sourceRanges)' --filter='disabled:false'")
-    else
-        firewall_rules=$(gcloud compute firewall-rules list --format="value(name,direction,sourceRanges)" --filter="disabled:false" 2>/dev/null)
-    fi
+    firewall_rules=$(gcloud compute firewall-rules list --project="$project_id" --format="json" 2>/dev/null)
     
-    if [ -n "$firewall_rules" ]; then
-        # Check for overly permissive rules
-        local permissive_rules=$(echo "$firewall_rules" | grep "0.0.0.0/0" | wc -l)
-        local total_rules=$(echo "$firewall_rules" | wc -l)
+    if [[ -n "$firewall_rules" ]]; then
+        local allow_rules_count
+        allow_rules_count=$(echo "$firewall_rules" | jq -r '.[] | select(.direction=="INGRESS" and .action=="allow") | .name' 2>/dev/null | wc -l)
         
-        details+="<p>VPC firewall rules analysis:</p><ul>"
-        details+="<li>Total active firewall rules: $total_rules</li>"
-        details+="<li>Rules allowing access from anywhere (0.0.0.0/0): $permissive_rules</li>"
+        local deny_rules_count
+        deny_rules_count=$(echo "$firewall_rules" | jq -r '.[] | select(.direction=="INGRESS" and .action=="deny") | .name' 2>/dev/null | wc -l)
         
-        if [ "$permissive_rules" -gt "$((total_rules / 3))" ]; then
-            details+="<li class='red'>High number of permissive firewall rules detected</li>"
-            found_issues=true
+        # Check for overly permissive rules (0.0.0.0/0)
+        local permissive_rules
+        permissive_rules=$(echo "$firewall_rules" | jq -r '.[] | select(.direction=="INGRESS" and .action=="allow" and (.sourceRanges[]? == "0.0.0.0/0")) | .name' 2>/dev/null | wc -l)
+        
+        if [[ "$permissive_rules" -gt 0 ]]; then
+            add_check_result "VPC firewall default-deny implementation" "FAIL" \
+                "Found $permissive_rules firewall rules allowing 0.0.0.0/0 - violates default-deny access control principle"
         else
-            details+="<li class='green'>Firewall rules appear to follow principle of least privilege</li>"
+            add_check_result "VPC firewall default-deny implementation" "PASS" \
+                "VPC firewall rules implement appropriate access restrictions ($allow_rules_count allow, $deny_rules_count deny rules)"
         fi
-        
-        details+="</ul>"
     else
-        details+="<p class='red'>No firewall rules found or unable to access firewall configuration.</p>"
-        found_issues=true
+        add_check_result "VPC firewall analysis" "WARN" \
+            "Cannot retrieve firewall rules for project $project_id - verify network permissions"
     fi
     
-    # Check for Identity-Aware Proxy usage across scope
+    # Check Identity-Aware Proxy configuration
     local iap_resources
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        iap_resources=$(run_gcp_command_across_projects "gcloud iap settings get" "--format='value(name)'")
+    iap_resources=$(gcloud iap web get-iam-policy --project="$project_id" 2>/dev/null)
+    
+    if [[ -n "$iap_resources" ]]; then
+        add_check_result "Identity-Aware Proxy configuration" "PASS" \
+            "Identity-Aware Proxy is configured for project $project_id - enhances access control"
     else
-        iap_resources=$(gcloud iap settings get --project="$DEFAULT_PROJECT" --format="value(name)" 2>/dev/null)
+        add_check_result "Identity-Aware Proxy configuration" "INFO" \
+            "Identity-Aware Proxy not configured - consider for enhanced access control per 7.2.1"
     fi
     
-    if [ -n "$iap_resources" ]; then
-        details+="<p class='green'>Identity-Aware Proxy is configured for additional access control.</p>"
-    else
-        details+="<p class='yellow'>Identity-Aware Proxy is not configured. Consider using IAP for fine-grained access control to applications.</p>"
-        found_issues=true
-    fi
+    # Check for privileged access monitoring
+    local privileged_roles
+    privileged_roles=$(gcloud projects get-iam-policy "$project_id" --format="json" 2>/dev/null | \
+        jq -r '.bindings[] | select(.role | contains("admin") or contains("owner") or contains("editor")) | .role' 2>/dev/null | \
+        sort -u | wc -l)
     
-    echo "$details"
-    if [ "$found_issues" = true ]; then
-        return 1
+    if [[ "$privileged_roles" -gt 10 ]]; then
+        add_check_result "Privileged access role distribution" "WARN" \
+            "Project has $privileged_roles privileged role types - review for least privilege compliance per 7.2.1"
     else
-        return 0
+        add_check_result "Privileged access role distribution" "PASS" \
+            "Privileged access roles appropriately limited ($privileged_roles role types)"
     fi
 }
 
-# Validate scope and requirements
-if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-    if [ -z "$DEFAULT_ORG" ]; then
-        print_status "FAIL" "Error: Organization scope requires an organization ID."
-        print_status "WARN" "Please provide organization ID with --org flag or ensure you have organization access."
-        exit 1
-    fi
-else
-    # Project scope validation
-    if [ -z "$DEFAULT_PROJECT" ]; then
-        print_status "FAIL" "Error: No project specified."
-        print_status "WARN" "Please set a default project with: gcloud config set project PROJECT_ID"
-        print_status "WARN" "Or specify a project with: --project PROJECT_ID"
-        exit 1
-    fi
-fi
-
-# Start script execution
-print_status "INFO" "============================================="
-print_status "INFO" "  PCI DSS 4.0.1 - Requirement $REQUIREMENT_NUMBER (GCP)"
-print_status "INFO" "  (Restrict Access by Business Need to Know)"
-print_status "INFO" "============================================="
-echo ""
-
-# Display scope information
-print_status "INFO" "Assessment Scope: $ASSESSMENT_SCOPE"
-if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-    print_status "INFO" "Organization: $DEFAULT_ORG"
-    print_status "WARN" "Note: Organization-wide assessment may take longer and requires broader permissions"
-else
-    print_status "INFO" "Project: $DEFAULT_PROJECT"
-fi
-echo ""
-
-# Initialize HTML report
-initialize_html_report "$OUTPUT_FILE" "$REPORT_TITLE"
-
-echo ""
-echo "Starting assessment at $(date)"
-echo ""
-
-#----------------------------------------------------------------------
-# SECTION 1: PERMISSIONS CHECK
-#----------------------------------------------------------------------
-add_html_section "$OUTPUT_FILE" "GCP Permissions Check" "<p>Verifying access to required GCP services for PCI Requirement $REQUIREMENT_NUMBER assessment...</p>" "info"
-
-print_status "INFO" "=== CHECKING REQUIRED GCP PERMISSIONS ==="
-
-# Check all required permissions based on scope
-if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-    # Organization-wide permission checks
-    check_gcp_permission "Projects" "list" "gcloud projects list --filter='parent.id:$DEFAULT_ORG' --limit=1"
-    ((total_checks++))
+# Function to assess least privilege implementation
+assess_least_privilege() {
+    local project_id="$1"
+    debug_log "Assessing least privilege implementation for project: $project_id"
     
-    check_gcp_permission "Organizations" "access" "gcloud organizations list --filter='name:organizations/$DEFAULT_ORG' --limit=1"
-    ((total_checks++))
-fi
+    # 7.2.4 - Least privilege access controls
+    add_check_result "7.2.4 - Least privilege implementation" "MANUAL" \
+        "Verify access control systems implement least privilege and limit access to the minimum required"
+    
+    # 7.2.5 - Assignment of access rights and privileges
+    add_check_result "7.2.5 - Access rights assignment process" "MANUAL" \
+        "Verify all access rights and privileges are assigned based on individual personnel's job classification and function"
+    
+    # Check for primitive roles usage (discouraged in favor of predefined/custom roles)
+    local project_policy
+    project_policy=$(gcloud projects get-iam-policy "$project_id" --format="json" 2>/dev/null)
+    
+    if [[ -n "$project_policy" ]]; then
+        local primitive_roles
+        primitive_roles=$(echo "$project_policy" | jq -r '.bindings[] | select(.role | startswith("roles/")) | select(.role | contains("owner") or contains("editor") or contains("viewer")) | .role' 2>/dev/null | sort -u | wc -l)
+        
+        local total_bindings
+        total_bindings=$(echo "$project_policy" | jq -r '.bindings[] | .role' 2>/dev/null | wc -l)
+        
+        if [[ "$primitive_roles" -gt 0 && "$total_bindings" -gt 0 ]]; then
+            local primitive_percentage=$(( (primitive_roles * 100) / total_bindings ))
+            
+            if [[ "$primitive_percentage" -gt 30 ]]; then
+                add_check_result "Primitive roles usage" "FAIL" \
+                    "$primitive_percentage% of bindings use primitive roles - violates least privilege principle (recommend <20%)"
+            elif [[ "$primitive_percentage" -gt 20 ]]; then
+                add_check_result "Primitive roles usage" "WARN" \
+                    "$primitive_percentage% of bindings use primitive roles - consider using predefined/custom roles for better access control"
+            else
+                add_check_result "Primitive roles usage" "PASS" \
+                    "Primitive roles usage within acceptable limits ($primitive_percentage% of bindings)"
+            fi
+        fi
+        
+        # Check for custom roles implementation
+        local custom_roles
+        custom_roles=$(gcloud iam roles list --project="$project_id" --format="value(name)" 2>/dev/null | wc -l)
+        
+        if [[ "$custom_roles" -gt 0 ]]; then
+            add_check_result "Custom roles implementation" "PASS" \
+                "Project implements $custom_roles custom roles - supports fine-grained access control"
+        else
+            add_check_result "Custom roles implementation" "INFO" \
+                "No custom roles found - consider implementing for enhanced least privilege access control"
+        fi
+    else
+        add_check_result "Least privilege analysis" "FAIL" \
+            "Cannot retrieve IAM policy for project $project_id - verify permissions"
+    fi
+}
 
-# Scope-aware permission checks
-PROJECT_FLAG=""
-if [ "$ASSESSMENT_SCOPE" == "project" ]; then
-    PROJECT_FLAG="--project=$DEFAULT_PROJECT"
-fi
+# Main assessment function for project iteration
+assess_project() {
+    local project_data="$1"
+    local project_id
+    
+    if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
+        project_id=$(echo "$project_data" | cut -d'|' -f1)
+        local project_name=$(echo "$project_data" | cut -d'|' -f2)
+        
+        print_status "INFO" "Assessing project: $project_name ($project_id)"
+        add_section "Project: $project_name ($project_id)"
+    else
+        project_id="$PROJECT_ID"
+        print_status "INFO" "Assessing project: $project_id"
+        add_section "PCI DSS Requirement 7 Assessment"
+    fi
+    
+    # Execute all assessment functions
+    assess_access_governance "$project_id"
+    assess_role_based_access "$project_id"
+    assess_access_control_systems "$project_id"
+    assess_least_privilege "$project_id"
+}
 
-# Requirement 7 specific permission checks
-check_gcp_permission "Projects" "get-iam-policy" "gcloud projects get-iam-policy $DEFAULT_PROJECT --limit=1"
-((total_checks++))
-
-check_gcp_permission "IAM" "service-accounts" "gcloud iam service-accounts list $PROJECT_FLAG --limit=1"
-((total_checks++))
-
-check_gcp_permission "Compute Engine" "firewall-rules" "gcloud compute firewall-rules list $PROJECT_FLAG --limit=1"
-((total_checks++))
-
-check_gcp_permission "Compute Engine" "instances" "gcloud compute instances list $PROJECT_FLAG --limit=1"
-((total_checks++))
-
-# Calculate permissions percentage
-available_permissions=$((total_checks - access_denied_checks))
-if [ $available_permissions -gt 0 ]; then
-    permissions_percentage=$(( ((total_checks - access_denied_checks) * 100) / total_checks ))
-else
-    permissions_percentage=0
-fi
-
-if [ $permissions_percentage -lt 70 ]; then
-    print_status "FAIL" "WARNING: Insufficient permissions to perform a complete PCI Requirement $REQUIREMENT_NUMBER assessment."
-    add_html_section "$OUTPUT_FILE" "Permission Assessment" "<p class='red'>Insufficient permissions detected. Only $permissions_percentage% of required permissions are available.</p><p>Without these permissions, the assessment will be incomplete and may not accurately reflect your PCI DSS compliance status.</p>" "fail"
-    read -p "Continue with limited assessment? (y/n): " CONTINUE
-    if [[ ! $CONTINUE =~ ^[Yy]$ ]]; then
-        echo "Assessment aborted."
+# Main execution logic with project iteration pattern
+if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
+    local projects_data
+    projects_data=$(get_projects_in_scope | format_project_data)
+    
+    if [[ -z "$projects_data" ]]; then
+        print_status "ERROR" "No projects found in organization scope"
         exit 1
     fi
+    
+    print_status "INFO" "Found $(echo "$projects_data" | wc -l) projects in scope"
+    
+    while IFS= read -r project_data; do
+        [[ -n "$project_data" ]] && assess_project "$project_data"
+    done <<< "$projects_data"
 else
-    print_status "PASS" "Permission check complete: $permissions_percentage% permissions available"
-    add_html_section "$OUTPUT_FILE" "Permission Assessment" "<p class='green'>Sufficient permissions detected. $permissions_percentage% of required permissions are available.</p>" "pass"
+    assess_project "$PROJECT_ID"
 fi
 
-# Reset counters for actual compliance checks
-total_checks=0
-passed_checks=0
-warning_checks=0
-failed_checks=0
+# Finalize the HTML report
+finalize_report
 
-#----------------------------------------------------------------------
-# SECTION 2: REQUIREMENT 7 ASSESSMENT LOGIC
-#----------------------------------------------------------------------
-print_status "INFO" "=== PCI REQUIREMENT $REQUIREMENT_NUMBER: RESTRICT ACCESS BY BUSINESS NEED TO KNOW ==="
+print_status "INFO" "Assessment completed"
+print_status "INFO" "Report saved to: $OUTPUT_FILE"
 
-# Requirement 7.2: Access to system components and data is appropriately defined and assigned
-add_html_section "$OUTPUT_FILE" "Requirement 7.2: Access definition and assignment" "<p>Verifying access control implementation based on job classification and least privilege...</p>" "info"
-
-# Check 7.2.2 - Least privilege implementation
-print_status "INFO" "Checking least privilege implementation..."
-privilege_details=$(check_least_privilege)
-if [[ "$privilege_details" == *"class='red'"* ]] || [[ "$privilege_details" == *"class='yellow'"* ]]; then
-    add_html_section "$OUTPUT_FILE" "7.2.2 - Least privilege implementation" "$privilege_details<p><strong>Remediation:</strong> Implement least privilege by using specific IAM roles instead of primitive roles. Enable OS Login for Compute Engine instances and create custom roles for specific job functions.</p>" "warning"
-    ((warning_checks++))
-else
-    add_html_section "$OUTPUT_FILE" "7.2.2 - Least privilege implementation" "$privilege_details" "pass"
-    ((passed_checks++))
-fi
-((total_checks++))
-
-# Check 7.2.5 - Service account management
-print_status "INFO" "Checking service account management..."
-sa_details=$(check_inactive_service_accounts)
-if [[ "$sa_details" == *"class='red'"* ]] || [[ "$sa_details" == *"class='yellow'"* ]]; then
-    add_html_section "$OUTPUT_FILE" "7.2.5 - Service account management" "$sa_details<p><strong>Remediation:</strong> Review and manage service account keys. Remove old or unused keys and ensure service accounts have minimal required privileges.</p>" "warning"
-    ((warning_checks++))
-else
-    add_html_section "$OUTPUT_FILE" "7.2.5 - Service account management" "$sa_details" "pass"
-    ((passed_checks++))
-fi
-((total_checks++))
-
-# Requirement 7.3: Access to system components and data is managed via an access control system(s)
-add_html_section "$OUTPUT_FILE" "Requirement 7.3: Access control systems" "<p>Verifying access control system implementation and configuration...</p>" "info"
-
-# Check 7.3.1 - Access control system implementation
-print_status "INFO" "Checking access control systems..."
-acs_details=$(check_access_control_systems)
-if [[ "$acs_details" == *"class='red'"* ]] || [[ "$acs_details" == *"class='yellow'"* ]]; then
-    add_html_section "$OUTPUT_FILE" "7.3.1 - Access control system implementation" "$acs_details<p><strong>Remediation:</strong> Implement comprehensive access control systems using Cloud IAM, VPC firewalls, and Identity-Aware Proxy. Ensure need-to-know restrictions are enforced.</p>" "warning"
-    ((warning_checks++))
-else
-    add_html_section "$OUTPUT_FILE" "7.3.1 - Access control system implementation" "$acs_details" "pass"
-    ((passed_checks++))
-fi
-((total_checks++))
-
-# Check 7.3.2 - Access control system configuration
-print_status "INFO" "Checking overly permissive policies..."
-permissive_details=$(check_overly_permissive_policies)
-if [[ "$permissive_details" == *"class='red'"* ]] || [[ "$permissive_details" == *"class='yellow'"* ]]; then
-    add_html_section "$OUTPUT_FILE" "7.3.2 - Access control system configuration" "$permissive_details<p><strong>Remediation:</strong> Review and restrict overly permissive IAM policies. Replace primitive roles with specific roles and limit external user access.</p>" "fail"
-    ((failed_checks++))
-else
-    add_html_section "$OUTPUT_FILE" "7.3.2 - Access control system configuration" "$permissive_details" "pass"
-    ((passed_checks++))
-fi
-((total_checks++))
-
-# Manual verification requirements
-manual_checks="<p>Manual verification required for complete PCI DSS Requirement 7 compliance:</p>
-<ul>
-<li><strong>7.1:</strong> Governance and documentation of access control policies and procedures</li>
-<li><strong>7.2.1:</strong> Job classification definitions and access control model documentation</li>
-<li><strong>7.2.3:</strong> Required privileges approval processes with documented authorized approvers</li>
-<li><strong>7.2.4:</strong> User account reviews at least every six months with management acknowledgment</li>
-<li><strong>7.2.6:</strong> Cardholder data query restrictions via applications with role-based access</li>
-<li><strong>7.3.3:</strong> Default-deny configuration verification across all access control systems</li>
-</ul>
-<p><strong>GCP Tools and Recommendations:</strong></p>
-<ul>
-<li>Use Cloud Identity groups for role-based access management</li>
-<li>Implement IAM Recommender for access optimization suggestions</li>
-<li>Use Organization Policies for access restrictions</li>
-<li>Configure Cloud Asset Inventory for access tracking</li>
-<li>Enable Cloud Audit Logs for approval trail documentation</li>
-<li>Use Cloud SQL IAM authentication for database access</li>
-<li>Implement VPC Service Controls for CHD systems</li>
-<li>Use Cloud IAM conditions for fine-grained access control</li>
-</ul>"
-
-add_html_section "$OUTPUT_FILE" "Manual Verification Requirements" "$manual_checks" "warning"
-((warning_checks++))
-((total_checks++))
-
-#----------------------------------------------------------------------
-
-#----------------------------------------------------------------------
-# FINAL REPORT
-#----------------------------------------------------------------------
-
-# Finalize HTML report using shared library
-# Add final summary metrics
-add_summary_metrics "$OUTPUT_FILE" "$total_checks" "$passed_checks" "$failed_checks" "$warning_checks"
-
-# Finalize HTML report using shared library
-finalize_report "$OUTPUT_FILE" "${REQUIREMENT_NUMBER}"
-
-# Display final summary using shared library
-# Display final summary using shared library
-print_status "INFO" "=== ASSESSMENT SUMMARY ==="
-print_status "INFO" "Total checks: $total_checks"
-print_status "PASS" "Passed: $passed_checks"
-print_status "FAIL" "Failed: $failed_checks"
-print_status "WARN" "Warnings: $warning_checks"
-print_status "INFO" "Report has been generated: $OUTPUT_FILE"
-print_status "PASS" "=================================================================="
+# Summary
+echo ""
+echo "Assessment Summary:"
+echo "=================="
+display_summary

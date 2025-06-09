@@ -15,922 +15,337 @@ source "$LIB_DIR/gcp_html_report.sh" || exit 1
 # Script-specific variables
 REQUIREMENT_NUMBER="8"
 
-# Initialize environment
-setup_environment || exit 1
+# Register required permissions for Requirement 8
+register_required_permissions "$REQUIREMENT_NUMBER" \
+    "iam.serviceAccounts.list" \
+    "resourcemanager.projects.getIamPolicy" \
+    "iam.roles.list" \
+    "admin.directory.users.readonly" \
+    "admin.directory.groups.readonly" \
+    "logging.logEntries.list" \
+    "monitoring.alertPolicies.list" \
+    "cloudasset.assets.searchAllResources" || {
+    echo "Error: Failed to register required permissions for Requirement $REQUIREMENT_NUMBER"
+    exit 1
+}
 
-# Parse command line arguments using shared function
+# Setup environment and parse command line arguments
+setup_environment "requirement8_assessment.log"
 parse_common_arguments "$@"
-case $? in
-    1) exit 1 ;;  # Error
-    2) exit 0 ;;  # Help displayed
-esac
 
-# Setup report configuration using shared library
-load_requirement_config "${REQUIREMENT_NUMBER}"
+# Validate GCP environment
+validate_prerequisites || exit 1
 
-# Validate scope and setup project context using shared library
-setup_assessment_scope || exit 1
-
-# Check permissions using shared library
-check_required_permissions "iam.serviceAccounts.list" "cloudidentity.groups.list" || exit 1
-
-# Initialize HTML report using shared library
-# Set output file path
-OUTPUT_FILE="${REPORT_DIR}/pci_req${REQUIREMENT_NUMBER}_report_$(date +%Y%m%d_%H%M%S).html"
-
-# Initialize HTML report using shared library
-initialize_report "$OUTPUT_FILE" "PCI DSS 4.0.1 - Requirement $REQUIREMENT_NUMBER Compliance Assessment Report" "${REQUIREMENT_NUMBER}"
-
-
-
-
-
-
-
-
-
-
-
-print_status "INFO" "============================================="
-print_status "INFO" "  PCI DSS 4.0.1 - Requirement 8 (GCP)"
-print_status "INFO" "============================================="
-echo ""
-
-# Display scope information using shared library
-# Display scope information using shared library - now handled in print_status calls
-print_status "INFO" "Assessment scope: ${ASSESSMENT_SCOPE:-project}"
-if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
-    print_status "INFO" "Organization ID: ${ORG_ID}"
-else
-    print_status "INFO" "Project ID: ${PROJECT_ID}"
+# Check permissions
+if ! check_all_permissions; then
+    prompt_continue_limited || exit 1
 fi
 
-echo ""
-echo "Starting assessment at $(date)"
-echo ""
+# Setup assessment scope
+setup_assessment_scope "$SCOPE" "$PROJECT_ID" "$ORG_ID"
 
-# Reset counters for actual compliance checks
-total_checks=0
-passed_checks=0
-warning_checks=0
-failed_checks=0
+# Configure HTML report
+initialize_report "PCI DSS Requirement $REQUIREMENT_NUMBER Assessment" "$ASSESSMENT_SCOPE"
 
+# Add assessment introduction
+add_section "authentication_governance" "Authentication and Identity Management Assessment" "Assessment of user identification and authentication access controls"
 
-# Function to check user identification and account management
-check_user_identification() {
-    local details=""
-    local found_issues=false
+debug_log "Starting PCI DSS Requirement 8 assessment"
+
+# Core Assessment Functions
+
+# 8.1 - Authentication governance and procedures
+assess_authentication_governance() {
+    local project_id="$1"
+    debug_log "Assessing authentication governance for project: $project_id"
     
-    details+="<p>Analysis of user identification and account management:</p>"
+    # 8.1.1 - Security policies and operational procedures documentation
+    add_check_result "8.1.1 - Security policies documentation" "MANUAL" \
+        "Verify documented security policies for Requirement 8 are maintained, up to date, in use, and known to affected parties"
     
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        details+="<p><strong>Organization-wide user management assessment:</strong></p>"
-        
-        # Check Cloud Identity users (if available) at organization level
-        local users=$(gcloud identity users list --format="value(name,primaryEmail)" 2>/dev/null)
-        
-        if [ -n "$users" ]; then
-            details+="<p>Cloud Identity users found:</p><ul>"
-            
-            local shared_accounts=""
-            while IFS=$'\t' read -r user_name email; do
-                # Check for potential shared/generic accounts
-                if [[ "$email" == *"admin"* ]] || [[ "$email" == *"shared"* ]] || [[ "$email" == *"service"* ]] || [[ "$email" == *"system"* ]]; then
-                    shared_accounts+="$email, "
-                    found_issues=true
-                fi
-                
-                details+="<li>$email</li>"
-            done <<< "$users"
-            
-            details+="</ul>"
-            
-            if [ -n "$shared_accounts" ]; then
-                details+="<p class='red'>Potential shared/generic accounts detected: ${shared_accounts%, }</p>"
-            fi
-        else
-            details+="<p>No Cloud Identity users found or unable to retrieve user list.</p>"
-        fi
-        
-        # Check service accounts across all projects
-        local projects=$(get_projects_in_scope)
-        details+="<p>Service account analysis across organization:</p><table>"
-        details+="<tr><th>Project</th><th>Service Account</th><th>Display Name</th><th>Status</th></tr>"
-        
-        for project in $projects; do
-            local service_accounts=$(gcloud iam service-accounts list --project="$project" --format="value(email,displayName,disabled)" 2>/dev/null)
-            
-            if [ -n "$service_accounts" ]; then
-                while IFS=$'\t' read -r sa_email display_name disabled; do
-                    if [ -z "$sa_email" ]; then
-                        continue
-                    fi
-                    
-                    local status_class="green"
-                    local status_text="Active"
-                    
-                    if [ "$disabled" = "True" ]; then
-                        status_class="yellow"
-                        status_text="Disabled (good for unused accounts)"
-                    fi
-                    
-                    details+="<tr><td>$project</td><td>$sa_email</td><td>$display_name</td><td class='$status_class'>$status_text</td></tr>"
-                done <<< "$service_accounts"
-            fi
-        done
-        
-        details+="</table>"
+    # 8.1.2 - Roles and responsibilities documentation
+    add_check_result "8.1.2 - Roles and responsibilities" "MANUAL" \
+        "Verify roles and responsibilities for Requirement 8 activities are documented, assigned, and understood"
+    
+    # Check for automated policy enforcement via Organization Policy
+    local policy_violations
+    policy_violations=$(gcloud resource-manager org-policies list \
+        --project="$project_id" \
+        --filter="constraint:constraints/iam.disableServiceAccountKeyCreation OR constraint:constraints/iam.automaticIamGrantsForDefaultServiceAccounts" \
+        --format="value(constraint)" 2>/dev/null || echo "")
+    
+    if [[ -n "$policy_violations" ]]; then
+        add_check_result "8.1 - Organization policy enforcement" "PASS" \
+            "Organization policies detected for authentication governance: $policy_violations"
     else
-        # Single project analysis
-        local users=$(gcloud identity users list --format="value(name,primaryEmail)" 2>/dev/null)
-        
-        if [ -n "$users" ]; then
-            details+="<p>Cloud Identity users found:</p><ul>"
-            
-            local shared_accounts=""
-            while IFS=$'\t' read -r user_name email; do
-                # Check for potential shared/generic accounts
-                if [[ "$email" == *"admin"* ]] || [[ "$email" == *"shared"* ]] || [[ "$email" == *"service"* ]] || [[ "$email" == *"system"* ]]; then
-                    shared_accounts+="$email, "
-                    found_issues=true
-                fi
-                
-                details+="<li>$email</li>"
-            done <<< "$users"
-            
-            details+="</ul>"
-            
-            if [ -n "$shared_accounts" ]; then
-                details+="<p class='red'>Potential shared/generic accounts detected: ${shared_accounts%, }</p>"
-            fi
-        else
-            details+="<p>No Cloud Identity users found or unable to retrieve user list.</p>"
-        fi
-        
-        # Check service accounts for proper naming and management
-        local service_accounts=$(gcloud iam service-accounts list --format="value(email,displayName,disabled)" 2>/dev/null)
-        
-        if [ -n "$service_accounts" ]; then
-            details+="<p>Service account analysis:</p><ul>"
-            
-            while IFS=$'\t' read -r sa_email display_name disabled; do
-                if [ "$disabled" = "True" ]; then
-                    details+="<li class='yellow'>$sa_email ($display_name) - Disabled (good for unused accounts)</li>"
-                else
-                    details+="<li>$sa_email ($display_name) - Active</li>"
-                fi
-            done <<< "$service_accounts"
-            
-            details+="</ul>"
-        else
-            details+="<p>No service accounts found in project $DEFAULT_PROJECT.</p>"
-        fi
-    fi
-    
-    # Manual verification requirements
-    details+="<p><strong>Manual verification required for:</strong></p><ul>"
-    details+="<li>Unique user ID assignment before access is granted</li>"
-    details+="<li>Group, shared, or generic ID usage controls and approvals</li>"
-    details+="<li>Proper authorization for user ID modifications</li>"
-    details+="<li>Immediate access revocation for terminated users</li>"
-    details+="<li>Inactive account management (90-day rule)</li>"
-    details+="</ul>"
-    
-    echo "$details"
-    if [ "$found_issues" = true ]; then
-        return 1
-    else
-        return 0
+        add_check_result "8.1 - Organization policy enforcement" "WARNING" \
+            "No organization policies detected for authentication governance. Consider implementing constraints for service account management."
     fi
 }
 
-print_status "INFO" "============================================="
-print_status "INFO" "  PCI DSS 4.0.1 - Requirement 8 (GCP)"
-print_status "INFO" "============================================="
-echo ""
-
-# Display scope information using shared library
-# Display scope information using shared library - now handled in print_status calls
-print_status "INFO" "Assessment scope: ${ASSESSMENT_SCOPE:-project}"
-if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
-    print_status "INFO" "Organization ID: ${ORG_ID}"
-else
-    print_status "INFO" "Project ID: ${PROJECT_ID}"
-fi
-
-echo ""
-echo "Starting assessment at $(date)"
-echo ""
-
-# Reset counters for actual compliance checks
-total_checks=0
-passed_checks=0
-warning_checks=0
-failed_checks=0
-
-
-# Function to check multi-factor authentication
-check_mfa_configuration() {
-    local details=""
-    local found_issues=false
+# 8.2 - User identification and account lifecycle management
+assess_user_identification() {
+    local project_id="$1"
+    debug_log "Assessing user identification for project: $project_id"
     
-    details+="<p>Analysis of multi-factor authentication configuration:</p>"
+    # Check Cloud Identity users configuration
+    local users
+    users=$(gcloud identity users list --format="value(name,primaryEmail)" 2>/dev/null || echo "")
     
-    # Check organization policy for MFA enforcement
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        details+="<p><strong>Organization-wide MFA policy analysis:</strong></p>"
+    if [[ -n "$users" ]]; then
+        local shared_accounts=""
+        local total_users=0
         
-        # Check for MFA enforcement policies at organization level
-        local org_policies=$(gcloud resource-manager org-policies list --organization="$DEFAULT_ORG" --format="value(constraint)" 2>/dev/null | grep -E "constraints/iam.disableServiceAccountKeyCreation|constraints/compute.requireOsLogin")
+        while IFS=$'\t' read -r user_name email; do
+            ((total_users++))
+            # Check for potential shared/generic accounts
+            if [[ "$email" == *"admin"* ]] || [[ "$email" == *"shared"* ]] || [[ "$email" == *"service"* ]] || [[ "$email" == *"system"* ]]; then
+                shared_accounts+="$email, "
+            fi
+        done <<< "$users"
         
-        if [ -n "$org_policies" ]; then
-            details+="<p class='green'>Found organization policies that support MFA enforcement:</p><ul>"
-            echo "$org_policies" | while read -r policy; do
-                details+="<li>$policy</li>"
-            done
-            details+="</ul>"
+        if [[ -n "$shared_accounts" ]]; then
+            add_check_result "8.2.1 - Individual user identification" "WARNING" \
+                "Potential shared accounts detected: ${shared_accounts%, }. Verify these accounts comply with individual identification requirements."
         else
-            details+="<p class='yellow'>No MFA-related organization policies found. Consider implementing policies to enforce MFA.</p>"
-            found_issues=true
+            add_check_result "8.2.1 - Individual user identification" "PASS" \
+                "Cloud Identity users appear to follow individual identification practices ($total_users users found)"
         fi
-        
-        # Check OS Login configuration across projects
-        local projects=$(get_projects_in_scope)
-        details+="<p>OS Login configuration across projects:</p><table>"
-        details+="<tr><th>Project</th><th>OS Login Enabled</th><th>Instances with OS Login</th><th>Status</th></tr>"
-        
-        for project in $projects; do
-            local project_metadata=$(gcloud compute project-info describe --project="$project" --format="value(commonInstanceMetadata.items)" 2>/dev/null)
-            local project_os_login="false"
-            
-            if echo "$project_metadata" | grep -q "enable-oslogin.*True"; then
-                project_os_login="true"
-            fi
-            
-            local instances=$(gcloud compute instances list --project="$project" --format="value(name,zone,metadata.items)" 2>/dev/null)
-            local os_login_instances=0
-            local total_instances=0
-            
-            if [ -n "$instances" ]; then
-                while IFS=$'\t' read -r instance_name zone metadata; do
-                    if [ -n "$instance_name" ]; then
-                        ((total_instances++))
-                        
-                        if echo "$metadata" | grep -q "enable-oslogin.*True"; then
-                            ((os_login_instances++))
-                        fi
-                    fi
-                done <<< "$instances"
-            fi
-            
-            local status_class="green"
-            local status_text="Good"
-            
-            if [ "$project_os_login" = "false" ] && [ "$os_login_instances" -eq 0 ]; then
-                status_class="red"
-                status_text="No OS Login"
-                found_issues=true
-            elif [ "$os_login_instances" -lt "$total_instances" ]; then
-                status_class="yellow"
-                status_text="Partial OS Login"
-                found_issues=true
-            fi
-            
-            details+="<tr><td>$project</td><td>$project_os_login</td><td>$os_login_instances/$total_instances</td><td class='$status_class'>$status_text</td></tr>"
-        done
-        
-        details+="</table>"
     else
-        # Single project analysis
-        local mfa_policies=$(gcloud resource-manager org-policies list --project="$DEFAULT_PROJECT" --format="value(constraint)" 2>/dev/null | grep -E "constraints/iam.disableServiceAccountKeyCreation|constraints/compute.requireOsLogin")
-        
-        if [ -n "$mfa_policies" ]; then
-            details+="<p class='green'>Found organization policies that support MFA enforcement:</p><ul>"
-            echo "$mfa_policies" | while read -r policy; do
-                details+="<li>$policy</li>"
-            done
-            details+="</ul>"
-        else
-            details+="<p class='yellow'>No MFA-related organization policies found. Consider implementing policies to enforce MFA.</p>"
-            found_issues=true
-        fi
-        
-        # Check for OS Login configuration
-        local project_metadata=$(gcloud compute project-info describe --format="value(commonInstanceMetadata.items)" 2>/dev/null)
-        
-        if echo "$project_metadata" | grep -q "enable-oslogin.*True"; then
-            details+="<p class='green'>OS Login is enabled at the project level, which supports centralized authentication and can enforce MFA.</p>"
-        else
-            details+="<p class='yellow'>OS Login is not enabled at the project level. Consider enabling OS Login for centralized authentication.</p>"
-            found_issues=true
-        fi
-        
-        # Check Compute Engine instances for OS Login
-        local instances=$(gcloud compute instances list --format="value(name,zone,metadata.items)" 2>/dev/null)
-        
-        if [ -n "$instances" ]; then
-            details+="<p>Compute Engine instance authentication analysis:</p><ul>"
-            
-            local os_login_enabled=0
-            local total_instances=0
-            
-            while IFS=$'\t' read -r instance_name zone metadata; do
-                ((total_instances++))
-                
-                if echo "$metadata" | grep -q "enable-oslogin.*True"; then
-                    ((os_login_enabled++))
-                    details+="<li class='green'>$instance_name (Zone: $zone) - OS Login enabled</li>"
-                else
-                    details+="<li class='yellow'>$instance_name (Zone: $zone) - OS Login not enabled</li>"
-                    found_issues=true
-                fi
-            done <<< "$instances"
-            
-            details+="</ul>"
-            
-            if [ "$os_login_enabled" -eq "$total_instances" ]; then
-                details+="<p class='green'>All instances have OS Login enabled.</p>"
-            else
-                details+="<p class='yellow'>$os_login_enabled out of $total_instances instances have OS Login enabled.</p>"
-                found_issues=true
-            fi
-        else
-            details+="<p>No Compute Engine instances found in project $DEFAULT_PROJECT.</p>"
-        fi
+        add_check_result "8.2.1 - Individual user identification" "INFO" \
+            "No Cloud Identity users found. Using project-level IAM for user management."
     fi
     
-    # Check for Identity-Aware Proxy (supports MFA)
-    local iap_resources
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        iap_resources=$(run_gcp_command_across_projects "gcloud iap settings get" "--format='value(name)'")
+    # 8.2.2 - Check service account management
+    local service_accounts
+    service_accounts=$(gcloud iam service-accounts list \
+        --project="$project_id" \
+        --format="value(email,displayName)" 2>/dev/null || echo "")
+    
+    if [[ -n "$service_accounts" ]]; then
+        local sa_count=0
+        local default_sa_count=0
+        
+        while IFS=$'\t' read -r sa_email sa_name; do
+            ((sa_count++))
+            if [[ "$sa_email" == *"-compute@developer.gserviceaccount.com" ]]; then
+                ((default_sa_count++))
+            fi
+        done <<< "$service_accounts"
+        
+        add_check_result "8.2.2 - Service account management" "INFO" \
+            "Service accounts found: $sa_count total ($default_sa_count default service accounts)"
+        
+        if [[ $default_sa_count -gt 0 ]]; then
+            add_check_result "8.2.3 - Default service account usage" "WARNING" \
+                "Default service accounts detected. Consider using custom service accounts with minimal permissions."
+        fi
     else
-        iap_resources=$(gcloud iap settings get --project="$DEFAULT_PROJECT" --format="value(name)" 2>/dev/null)
+        add_check_result "8.2.2 - Service account management" "INFO" \
+            "No service accounts found in project"
     fi
     
-    if [ -n "$iap_resources" ]; then
-        details+="<p class='green'>Identity-Aware Proxy is configured, which can enforce MFA for application access.</p>"
-    else
-        details+="<p class='yellow'>Identity-Aware Proxy is not configured. Consider using IAP for application-level MFA enforcement.</p>"
-        found_issues=true
-    fi
-    
-    # Manual verification requirements
-    details+="<p><strong>Manual verification required for MFA implementation:</strong></p><ul>"
-    details+="<li>MFA enabled for all non-console administrative access to CDE</li>"
-    details+="<li>MFA enabled for all non-console access to CDE</li>"
-    details+="<li>MFA enabled for all remote access from outside entity's network</li>"
-    details+="<li>MFA system configured to prevent replay attacks</li>"
-    details+="<li>MFA system requires at least two different authentication factors</li>"
-    details+="<li>No MFA bypass capabilities except for documented exceptions</li>"
-    details+="</ul>"
-    
-    echo "$details"
-    if [ "$found_issues" = true ]; then
-        return 1
-    else
-        return 0
-    fi
+    # 8.2.4-8.2.8 - Account lifecycle management (manual verification)
+    add_check_result "8.2.4-8.2.8 - Account lifecycle management" "MANUAL" \
+        "Verify account provisioning, modification, review, and removal processes are documented and followed"
 }
 
-print_status "INFO" "============================================="
-print_status "INFO" "  PCI DSS 4.0.1 - Requirement 8 (GCP)"
-print_status "INFO" "============================================="
-echo ""
-
-# Display scope information using shared library
-# Display scope information using shared library - now handled in print_status calls
-print_status "INFO" "Assessment scope: ${ASSESSMENT_SCOPE:-project}"
-if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
-    print_status "INFO" "Organization ID: ${ORG_ID}"
-else
-    print_status "INFO" "Project ID: ${PROJECT_ID}"
-fi
-
-echo ""
-echo "Starting assessment at $(date)"
-echo ""
-
-# Reset counters for actual compliance checks
-total_checks=0
-passed_checks=0
-warning_checks=0
-failed_checks=0
-
-
-# Function to check authentication policies and mechanisms
-check_authentication_policies() {
-    local details=""
-    local found_issues=false
+# 8.3 - Strong authentication factors and policies
+assess_strong_authentication() {
+    local project_id="$1"
+    debug_log "Assessing strong authentication for project: $project_id"
     
-    details+="<p>Analysis of authentication policies and mechanisms:</p>"
+    # 8.3.1 - Check password/authentication policies via Organization Policy
+    local auth_policies
+    auth_policies=$(gcloud resource-manager org-policies list \
+        --project="$project_id" \
+        --filter="constraint:constraints/iam.allowedPolicyMemberDomains" \
+        --format="value(constraint)" 2>/dev/null || echo "")
     
-    # Check service account key management across scope
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        details+="<p><strong>Organization-wide service account key analysis:</strong></p>"
-        
-        local projects=$(get_projects_in_scope)
-        details+="<table><tr><th>Project</th><th>Service Account</th><th>Key Count</th><th>Old Keys (>90 days)</th><th>Status</th></tr>"
-        
-        local current_time=$(date +%s)
-        
-        for project in $projects; do
-            local service_accounts=$(gcloud iam service-accounts list --project="$project" --format="value(email)" 2>/dev/null)
-            
-            for sa_email in $service_accounts; do
-                if [ -z "$sa_email" ]; then
-                    continue
-                fi
-                
-                # Get service account keys
-                local sa_keys=$(gcloud iam service-accounts keys list --iam-account="$sa_email" --format="json" 2>/dev/null)
-                
-                if [ -n "$sa_keys" ]; then
-                    local key_count=$(echo "$sa_keys" | jq -r '. | length' 2>/dev/null)
-                    local user_managed_keys=0
-                    local old_keys=0
-                    
-                    for key_info in $(echo "$sa_keys" | jq -c '.[]'); do
-                        local key_type=$(echo "$key_info" | jq -r '.keyType' 2>/dev/null)
-                        local create_time=$(echo "$key_info" | jq -r '.validAfterTime' 2>/dev/null)
-                        
-                        if [ "$key_type" = "USER_MANAGED" ]; then
-                            ((user_managed_keys++))
-                            
-                            # Calculate key age
-                            local create_epoch=$(date -d "$create_time" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$create_time" +%s 2>/dev/null)
-                            
-                            if [ -n "$create_epoch" ]; then
-                                local days_old=$(( (current_time - create_epoch) / 86400 ))
-                                
-                                if [ "$days_old" -gt 90 ]; then
-                                    ((old_keys++))
-                                fi
-                            fi
-                        fi
-                    done
-                    
-                    # Determine status
-                    local status_class="green"
-                    local status_text="Good"
-                    
-                    if [ "$user_managed_keys" -eq 0 ]; then
-                        status_text="System-managed only"
-                    elif [ "$old_keys" -gt 0 ]; then
-                        status_class="red"
-                        status_text="Old keys detected"
-                        found_issues=true
-                    else
-                        status_text="All keys recent"
-                    fi
-                    
-                    details+="<tr><td>$project</td><td>$(echo $sa_email | cut -c1-30)...</td><td>$key_count ($user_managed_keys user-managed)</td><td>$old_keys</td><td class='$status_class'>$status_text</td></tr>"
-                fi
-            done
-        done
-        
-        details+="</table>"
+    if [[ -n "$auth_policies" ]]; then
+        add_check_result "8.3.1 - Authentication policy enforcement" "PASS" \
+            "Organization policy for allowed domains detected: $auth_policies"
     else
-        # Single project analysis
-        local service_accounts=$(gcloud iam service-accounts list --format="value(email)" 2>/dev/null)
-        
-        if [ -n "$service_accounts" ]; then
-            details+="<p>Service account key analysis:</p><table>"
-            details+="<tr><th>Service Account</th><th>Key Count</th><th>Key Ages</th><th>Status</th></tr>"
-            
-            local current_time=$(date +%s)
-            
-            for sa_email in $service_accounts; do
-                # Get service account keys
-                local sa_keys=$(gcloud iam service-accounts keys list --iam-account="$sa_email" --format="json" 2>/dev/null)
-                
-                if [ -n "$sa_keys" ]; then
-                    local key_count=$(echo "$sa_keys" | jq -r '. | length' 2>/dev/null)
-                    local user_managed_keys=0
-                    local old_keys=0
-                    local key_ages=""
-                    
-                    for key_info in $(echo "$sa_keys" | jq -c '.[]'); do
-                        local key_type=$(echo "$key_info" | jq -r '.keyType' 2>/dev/null)
-                        local create_time=$(echo "$key_info" | jq -r '.validAfterTime' 2>/dev/null)
-                        
-                        if [ "$key_type" = "USER_MANAGED" ]; then
-                            ((user_managed_keys++))
-                            
-                            # Calculate key age
-                            local create_epoch=$(date -d "$create_time" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$create_time" +%s 2>/dev/null)
-                            
-                            if [ -n "$create_epoch" ]; then
-                                local days_old=$(( (current_time - create_epoch) / 86400 ))
-                                
-                                if [ "$days_old" -gt 90 ]; then
-                                    ((old_keys++))
-                                fi
-                                
-                                if [ -n "$key_ages" ]; then
-                                    key_ages+=", "
-                                fi
-                                key_ages+="${days_old}d"
-                            fi
-                        fi
-                    done
-                    
-                    # Determine status
-                    local status_class="green"
-                    local status_text="System-managed only"
-                    
-                    if [ "$user_managed_keys" -eq 0 ]; then
-                        status_text="System-managed only"
-                    elif [ "$old_keys" -gt 0 ]; then
-                        status_class="red"
-                        status_text="$old_keys old keys (>90 days)"
-                        found_issues=true
-                    else
-                        status_text="All keys recent"
-                    fi
-                    
-                    details+="<tr><td>$sa_email</td><td>$key_count ($user_managed_keys user-managed)</td><td>$key_ages</td><td class='$status_class'>$status_text</td></tr>"
-                fi
-            done
-            
-            details+="</table>"
-        else
-            details+="<p>No service accounts found in project $DEFAULT_PROJECT.</p>"
-        fi
+        add_check_result "8.3.1 - Authentication policy enforcement" "WARNING" \
+            "No organization policy for domain restrictions detected. Consider implementing allowed policy member domains."
     fi
     
-    # Manual verification requirements
-    details+="<p><strong>Manual verification required for authentication policies:</strong></p><ul>"
-    details+="<li>Password/passphrase minimum length of 12 characters</li>"
-    details+="<li>Password complexity (numeric and alphabetic characters)</li>"
-    details+="<li>Password history prevention (last 4 passwords)</li>"
-    details+="<li>Password change requirements (90 days for single-factor)</li>"
-    details+="<li>Account lockout after 10 invalid attempts</li>"
-    details+="<li>Session timeout after 15 minutes of inactivity</li>"
-    details+="<li>First-time password change requirements</li>"
-    details+="<li>Authentication factor protection and non-sharing</li>"
-    details+="</ul>"
+    # 8.3.2 - Check service account key management
+    local sa_keys_check
+    sa_keys_check=$(gcloud resource-manager org-policies describe constraints/iam.disableServiceAccountKeyCreation \
+        --project="$project_id" 2>/dev/null || echo "")
     
-    echo "$details"
-    if [ "$found_issues" = true ]; then
-        return 1
+    if [[ "$sa_keys_check" == *"rules"* ]]; then
+        add_check_result "8.3.2 - Service account key restrictions" "PASS" \
+            "Service account key creation restrictions are configured"
     else
-        return 0
+        add_check_result "8.3.2 - Service account key restrictions" "WARNING" \
+            "No restrictions on service account key creation detected. Consider disabling key creation where possible."
     fi
+    
+    # 8.3.3-8.3.11 - Authentication mechanisms (manual verification)
+    add_check_result "8.3.3-8.3.11 - Authentication mechanisms" "MANUAL" \
+        "Verify password policies, encryption, transmission security, and authentication factor requirements"
 }
 
-print_status "INFO" "============================================="
-print_status "INFO" "  PCI DSS 4.0.1 - Requirement 8 (GCP)"
-print_status "INFO" "============================================="
-echo ""
-
-# Display scope information using shared library
-# Display scope information using shared library - now handled in print_status calls
-print_status "INFO" "Assessment scope: ${ASSESSMENT_SCOPE:-project}"
-if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
-    print_status "INFO" "Organization ID: ${ORG_ID}"
-else
-    print_status "INFO" "Project ID: ${PROJECT_ID}"
-fi
-
-echo ""
-echo "Starting assessment at $(date)"
-echo ""
-
-# Reset counters for actual compliance checks
-total_checks=0
-passed_checks=0
-warning_checks=0
-failed_checks=0
-
-
-# Function to check access monitoring and control
-check_access_monitoring() {
-    local details=""
-    local found_issues=false
+# 8.4-8.5 - Multi-factor authentication implementation and enforcement
+assess_mfa_implementation() {
+    local project_id="$1"
+    debug_log "Assessing MFA implementation for project: $project_id"
     
-    details+="<p>Analysis of access monitoring and control mechanisms:</p>"
+    # Check for OS Login configuration
+    local os_login_check
+    os_login_check=$(gcloud compute project-info describe \
+        --project="$project_id" \
+        --format="value(commonInstanceMetadata.items[key='enable-oslogin'].value)" 2>/dev/null || echo "")
     
-    # Check Cloud Audit Logs across scope
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        details+="<p><strong>Organization-wide audit logging analysis:</strong></p>"
+    if [[ "$os_login_check" == "TRUE" ]]; then
+        add_check_result "8.4.1 - OS Login MFA configuration" "PASS" \
+            "OS Login is enabled, supporting centralized MFA for compute instances"
+    else
+        add_check_result "8.4.1 - OS Login MFA configuration" "WARNING" \
+            "OS Login is not enabled. Consider enabling for centralized MFA on compute instances."
+    fi
+    
+    # Check for IAP (Identity-Aware Proxy) configuration
+    local iap_check
+    iap_check=$(gcloud iap web get-iam-policy 2>/dev/null | grep -c "members" || echo "0")
+    
+    if [[ "$iap_check" -gt 0 ]]; then
+        add_check_result "8.4.2 - Identity-Aware Proxy MFA" "PASS" \
+            "Identity-Aware Proxy configuration detected, supporting application-level MFA"
+    else
+        add_check_result "8.4.2 - Identity-Aware Proxy MFA" "INFO" \
+            "No Identity-Aware Proxy configuration detected. Consider IAP for application-level MFA."
+    fi
+    
+    # 8.4.3 and 8.5 - MFA requirements and configuration (manual verification)
+    add_check_result "8.4.3 - MFA for all access to CDE" "MANUAL" \
+        "Verify MFA is implemented for all access to cardholder data environment"
+    
+    add_check_result "8.5.1 - MFA system configuration" "MANUAL" \
+        "Verify MFA systems meet replay resistance and factor requirements per PCI DSS"
+}
+
+# 8.6 - System and application account management
+assess_account_management() {
+    local project_id="$1"
+    debug_log "Assessing account management for project: $project_id"
+    
+    # Check for automated service account management
+    local sa_list
+    sa_list=$(gcloud iam service-accounts list \
+        --project="$project_id" \
+        --format="value(email,description)" 2>/dev/null || echo "")
+    
+    if [[ -n "$sa_list" ]]; then
+        local documented_accounts=0
+        local total_accounts=0
         
-        local projects=$(get_projects_in_scope)
-        local projects_with_audit_logs=0
-        local total_projects=0
-        
-        for project in $projects; do
-            ((total_projects++))
-            
-            local audit_logs=$(gcloud logging logs list --project="$project" --filter="name~'cloudaudit'" --format="value(name)" 2>/dev/null)
-            
-            if [ -n "$audit_logs" ]; then
-                ((projects_with_audit_logs++))
+        while IFS=$'\t' read -r sa_email sa_desc; do
+            ((total_accounts++))
+            if [[ -n "$sa_desc" ]]; then
+                ((documented_accounts++))
             fi
-        done
+        done <<< "$sa_list"
         
-        details+="<p>Audit logging coverage: $projects_with_audit_logs out of $total_projects projects have audit logs configured</p>"
+        local documentation_percentage=$((documented_accounts * 100 / total_accounts))
         
-        if [ "$projects_with_audit_logs" -lt "$total_projects" ]; then
-            details+="<p class='yellow'>Some projects missing audit log configuration. Ensure Cloud Audit Logs are enabled for all projects.</p>"
-            found_issues=true
+        if [[ $documentation_percentage -ge 80 ]]; then
+            add_check_result "8.6.1 - Service account documentation" "PASS" \
+                "Service accounts are well documented ($documented_accounts/$total_accounts have descriptions)"
         else
-            details+="<p class='green'>All projects have audit logging configured.</p>"
-        fi
-        
-        # Check for log sinks at organization level
-        local org_sinks=$(gcloud logging sinks list --organization="$DEFAULT_ORG" --format="value(name,destination)" 2>/dev/null)
-        
-        if [ -n "$org_sinks" ]; then
-            details+="<p class='green'>Organization-level log sinks configured:</p><ul>"
-            echo "$org_sinks" | while IFS=$'\t' read -r sink_name destination; do
-                details+="<li>$sink_name → $destination</li>"
-            done
-            details+="</ul>"
-        else
-            details+="<p class='yellow'>No organization-level log sinks found. Consider centralized log export and analysis.</p>"
-            found_issues=true
-        fi
-    else
-        # Single project analysis
-        local audit_logs=$(gcloud logging logs list --filter="name~'cloudaudit'" --format="value(name)" 2>/dev/null)
-        
-        if [ -n "$audit_logs" ]; then
-            details+="<p class='green'>Cloud Audit Logs are configured:</p><ul>"
-            echo "$audit_logs" | while read -r log_name; do
-                details+="<li>$log_name</li>"
-            done
-            details+="</ul>"
-        else
-            details+="<p class='yellow'>No audit logs found. Ensure Cloud Audit Logs are properly configured.</p>"
-            found_issues=true
-        fi
-        
-        # Check for log sinks and exports
-        local sinks=$(gcloud logging sinks list --format="value(name,destination)" 2>/dev/null)
-        
-        if [ -n "$sinks" ]; then
-            details+="<p class='green'>Log sinks configured for log export and analysis:</p><ul>"
-            while IFS=$'\t' read -r sink_name destination; do
-                details+="<li>$sink_name → $destination</li>"
-            done <<< "$sinks"
-            details+="</ul>"
-        else
-            details+="<p class='yellow'>No log sinks found. Consider exporting logs for long-term storage and analysis.</p>"
-            found_issues=true
+            add_check_result "8.6.1 - Service account documentation" "WARNING" \
+                "Service account documentation needs improvement ($documented_accounts/$total_accounts have descriptions)"
         fi
     fi
     
-    # Check for Security Command Center (if available)
-    if [ -n "$DEFAULT_ORG" ]; then
-        local auth_findings=$(gcloud scc findings list --organization="organizations/$DEFAULT_ORG" --filter="category:AUTH OR category:IAM" --format="value(name)" --limit=5 2>/dev/null)
-        
-        if [ -n "$auth_findings" ]; then
-            local finding_count=$(echo "$auth_findings" | wc -l)
-            details+="<p class='yellow'>$finding_count authentication-related security findings found in Security Command Center. Review these findings.</p>"
-            found_issues=true
-        else
-            details+="<p class='green'>No authentication-related security findings in Security Command Center.</p>"
-        fi
+    # Check for audit logging configuration
+    local audit_logs
+    audit_logs=$(gcloud logging sinks list \
+        --project="$project_id" \
+        --filter="name:audit*" \
+        --format="value(name)" 2>/dev/null || echo "")
+    
+    if [[ -n "$audit_logs" ]]; then
+        add_check_result "8.6.2 - Authentication event logging" "PASS" \
+            "Audit logging sinks detected: $audit_logs"
     else
-        details+="<p class='yellow'>Organization not configured for Security Command Center.</p>"
-        found_issues=true
+        add_check_result "8.6.2 - Authentication event logging" "WARNING" \
+            "No audit logging sinks detected. Consider implementing Cloud Audit Logs for authentication monitoring."
     fi
     
-    # Manual verification requirements
-    details+="<p><strong>Manual verification required for access monitoring:</strong></p><ul>"
-    details+="<li>Regular review of user access and privileges</li>"
-    details+="<li>Monitoring of authentication failures and suspicious activities</li>"
-    details+="<li>Log retention policies meet PCI DSS requirements</li>"
-    details+="<li>Automated alerting for security events</li>"
-    details+="<li>Regular access recertification processes</li>"
-    details+="<li>Segregation of duties in access management</li>"
-    details+="</ul>"
-    
-    echo "$details"
-    if [ "$found_issues" = true ]; then
-        return 1
-    else
-        return 0
-    fi
+    # 8.6.3 - Session management and timeout controls (manual verification)
+    add_check_result "8.6.3 - Session management controls" "MANUAL" \
+        "Verify session timeout controls (15-minute inactivity timeout) are implemented for all access"
 }
 
-# Validate scope and requirements
-if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-    if [ -z "$DEFAULT_ORG" ]; then
-        print_status "FAIL" "Error: Organization scope requires an organization ID."
-        print_status "WARN" "Please provide organization ID with --org flag or ensure you have organization access."
-        exit 1
-    fi
-else
-    # Project scope validation
-    if [ -z "$DEFAULT_PROJECT" ]; then
-        print_status "FAIL" "Error: No project specified."
-        print_status "WARN" "Please set a default project with: gcloud config set project PROJECT_ID"
-        print_status "WARN" "Or specify a project with: --project PROJECT_ID"
-        exit 1
-    fi
-fi
-
-# Start script execution
-print_status "INFO" "============================================="
-print_status "INFO" "  PCI DSS 4.0.1 - Requirement $REQUIREMENT_NUMBER (GCP)"
-print_status "INFO" "  (Identify Users and Authenticate Access)"
-print_status "INFO" "============================================="
-echo ""
-
-# Display scope information
-print_status "INFO" "Assessment Scope: $ASSESSMENT_SCOPE"
-if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-    print_status "INFO" "Organization: $DEFAULT_ORG"
-    print_status "WARN" "Note: Organization-wide assessment may take longer and requires broader permissions"
-else
-    print_status "INFO" "Project: $DEFAULT_PROJECT"
-fi
-echo ""
-
-# Initialize HTML report
-initialize_html_report "$OUTPUT_FILE" "$REPORT_TITLE"
-
-echo ""
-echo "Starting assessment at $(date)"
-echo ""
-
-#----------------------------------------------------------------------
-# SECTION 1: PERMISSIONS CHECK
-#----------------------------------------------------------------------
-add_html_section "$OUTPUT_FILE" "GCP Permissions Check" "<p>Verifying access to required GCP services for PCI Requirement $REQUIREMENT_NUMBER assessment...</p>" "info"
-
-print_status "INFO" "=== CHECKING REQUIRED GCP PERMISSIONS ==="
-
-# Check all required permissions based on scope
-if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-    # Organization-wide permission checks
-    check_gcp_permission "Projects" "list" "gcloud projects list --filter='parent.id:$DEFAULT_ORG' --limit=1"
-    ((total_checks++))
+# Main project assessment function
+assess_project() {
+    local project_id="$1"
+    debug_log "Starting Requirement 8 assessment for project: $project_id"
     
-    check_gcp_permission "Organizations" "access" "gcloud organizations list --filter='name:organizations/$DEFAULT_ORG' --limit=1"
-    ((total_checks++))
-fi
+    add_section "project_assessment" "Project Assessment: $project_id" "Detailed assessment of authentication and identity management controls"
+    
+    # Run all assessment functions
+    assess_authentication_governance "$project_id"
+    assess_user_identification "$project_id"
+    assess_strong_authentication "$project_id"
+    assess_mfa_implementation "$project_id"
+    assess_account_management "$project_id"
+    
+    debug_log "Completed Requirement 8 assessment for project: $project_id"
+}
 
-# Scope-aware permission checks
-PROJECT_FLAG=""
-if [ "$ASSESSMENT_SCOPE" == "project" ]; then
-    PROJECT_FLAG="--project=$DEFAULT_PROJECT"
-fi
-
-# Requirement 8 specific permission checks
-check_gcp_permission "Projects" "get-iam-policy" "gcloud projects get-iam-policy $DEFAULT_PROJECT --limit=1"
-((total_checks++))
-
-check_gcp_permission "IAM" "service-accounts" "gcloud iam service-accounts list $PROJECT_FLAG --limit=1"
-((total_checks++))
-
-check_gcp_permission "Identity" "users" "gcloud identity users list --limit=1"
-((total_checks++))
-
-check_gcp_permission "Compute Engine" "instances" "gcloud compute instances list $PROJECT_FLAG --limit=1"
-((total_checks++))
-
-check_gcp_permission "Logging" "logs" "gcloud logging logs list $PROJECT_FLAG --limit=1"
-((total_checks++))
-
-# Calculate permissions percentage
-available_permissions=$((total_checks - access_denied_checks))
-if [ $available_permissions -gt 0 ]; then
-    permissions_percentage=$(( ((total_checks - access_denied_checks) * 100) / total_checks ))
-else
-    permissions_percentage=0
-fi
-
-if [ $permissions_percentage -lt 70 ]; then
-    print_status "FAIL" "WARNING: Insufficient permissions to perform a complete PCI Requirement $REQUIREMENT_NUMBER assessment."
-    add_html_section "$OUTPUT_FILE" "Permission Assessment" "<p class='red'>Insufficient permissions detected. Only $permissions_percentage% of required permissions are available.</p><p>Without these permissions, the assessment will be incomplete and may not accurately reflect your PCI DSS compliance status.</p>" "fail"
-    read -p "Continue with limited assessment? (y/n): " CONTINUE
-    if [[ ! $CONTINUE =~ ^[Yy]$ ]]; then
-        echo "Assessment aborted."
-        exit 1
+# Execute assessment based on scope
+if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
+    # Organization-wide assessment
+    debug_log "Starting organization-wide assessment for org: $ORG_ID"
+    
+    # Get all projects in organization
+    projects=$(get_projects_in_scope)
+    
+    if [[ -z "$projects" ]]; then
+        error_exit "No projects found in organization $ORG_ID"
     fi
+    
+    while read -r project_id; do
+        [[ -z "$project_id" ]] && continue
+        assess_project "$project_id"
+    done <<< "$projects"
+    
 else
-    print_status "PASS" "Permission check complete: $permissions_percentage% permissions available"
-    add_html_section "$OUTPUT_FILE" "Permission Assessment" "<p class='green'>Sufficient permissions detected. $permissions_percentage% of required permissions are available.</p>" "pass"
+    # Single project assessment
+    debug_log "Starting single project assessment for: $PROJECT_ID"
+    assess_project "$PROJECT_ID"
 fi
 
-# Reset counters for actual compliance checks
-total_checks=0
-passed_checks=0
-warning_checks=0
-failed_checks=0
-
-#----------------------------------------------------------------------
-# SECTION 2: REQUIREMENT 8 ASSESSMENT LOGIC
-#----------------------------------------------------------------------
-print_status "INFO" "=== PCI REQUIREMENT $REQUIREMENT_NUMBER: IDENTIFY USERS AND AUTHENTICATE ACCESS ==="
-
-# Requirement 8.2: User identification and account management
-add_html_section "$OUTPUT_FILE" "Requirement 8.2: User identification and account management" "<p>Verifying user identification and account management implementation...</p>" "info"
-
-# Check 8.2.1-8.2.8 - User identification and account management
-print_status "INFO" "Checking user identification and account management..."
-user_id_details=$(check_user_identification)
-if [[ "$user_id_details" == *"class='red'"* ]] || [[ "$user_id_details" == *"class='yellow'"* ]]; then
-    add_html_section "$OUTPUT_FILE" "8.2.1-8.2.8 - User identification and account management" "$user_id_details<p><strong>Remediation:</strong> Implement proper user identification and account management controls using Cloud Identity and IAM best practices.</p>" "warning"
-    ((warning_checks++))
-else
-    add_html_section "$OUTPUT_FILE" "8.2.1-8.2.8 - User identification and account management" "$user_id_details" "pass"
-    ((passed_checks++))
-fi
-((total_checks++))
-
-# Requirement 8.3: Strong authentication is implemented
-add_html_section "$OUTPUT_FILE" "Requirement 8.3: Strong authentication" "<p>Verifying strong authentication mechanisms and policies...</p>" "info"
-
-# Check 8.3.1-8.3.11 - Authentication policies and mechanisms
-print_status "INFO" "Checking authentication policies and mechanisms..."
-auth_details=$(check_authentication_policies)
-if [[ "$auth_details" == *"class='red'"* ]] || [[ "$auth_details" == *"class='yellow'"* ]]; then
-    add_html_section "$OUTPUT_FILE" "8.3.1-8.3.11 - Strong authentication mechanisms" "$auth_details<p><strong>Remediation:</strong> Implement strong authentication mechanisms including proper password policies, service account key management, and credential protection.</p>" "warning"
-    ((warning_checks++))
-else
-    add_html_section "$OUTPUT_FILE" "8.3.1-8.3.11 - Strong authentication mechanisms" "$auth_details" "pass"
-    ((passed_checks++))
-fi
-((total_checks++))
-
-# Requirement 8.4: Multi-factor authentication (MFA) is implemented
-add_html_section "$OUTPUT_FILE" "Requirement 8.4: Multi-factor authentication" "<p>Verifying MFA implementation and configuration...</p>" "info"
-
-# Check 8.4.1-8.4.3 - MFA requirements
-print_status "INFO" "Checking multi-factor authentication configuration..."
-mfa_details=$(check_mfa_configuration)
-if [[ "$mfa_details" == *"class='red'"* ]] || [[ "$mfa_details" == *"class='yellow'"* ]]; then
-    add_html_section "$OUTPUT_FILE" "8.4.1-8.4.3 - Multi-factor authentication" "$mfa_details<p><strong>Remediation:</strong> Implement MFA for all access to CDE using OS Login, IAP, and organization policies. Ensure MFA is enforced for administrative and remote access.</p>" "warning"
-    ((warning_checks++))
-else
-    add_html_section "$OUTPUT_FILE" "8.4.1-8.4.3 - Multi-factor authentication" "$mfa_details" "pass"
-    ((passed_checks++))
-fi
-((total_checks++))
-
-# Requirement 8.6: Application and system account management
-add_html_section "$OUTPUT_FILE" "Requirement 8.6: System account management" "<p>Verifying system account management and access monitoring...</p>" "info"
-
-# Check access monitoring and control mechanisms
-print_status "INFO" "Checking access monitoring and control mechanisms..."
-monitoring_details=$(check_access_monitoring)
-if [[ "$monitoring_details" == *"class='red'"* ]] || [[ "$monitoring_details" == *"class='yellow'"* ]]; then
-    add_html_section "$OUTPUT_FILE" "8.6 - Access monitoring and control" "$monitoring_details<p><strong>Remediation:</strong> Implement comprehensive access monitoring using Cloud Audit Logs, Security Command Center, and proper log management.</p>" "warning"
-    ((warning_checks++))
-else
-    add_html_section "$OUTPUT_FILE" "8.6 - Access monitoring and control" "$monitoring_details" "pass"
-    ((passed_checks++))
-fi
-((total_checks++))
-
-# Manual verification requirements
-manual_checks="<p>Manual verification required for complete PCI DSS Requirement 8 compliance:</p>
+# Add manual verification requirements
+manual_requirements="
+<h3>Manual Verification Requirements</h3>
+<p>The following items require manual verification for complete PCI DSS Requirement 8 compliance:</p>
 <ul>
-<li><strong>8.1:</strong> Governance and documentation of authentication policies and procedures</li>
-<li><strong>8.3:</strong> Password/passphrase policies meeting PCI DSS requirements (12+ characters, complexity, history)</li>
-<li><strong>8.5.1:</strong> MFA system configuration with anti-replay protection and proper factor requirements</li>
-<li><strong>8.6:</strong> Session management controls with 15-minute inactivity timeout</li>
-<li><strong>System accounts:</strong> Authentication requirements and management for application/system accounts</li>
-<li><strong>Account lockout:</strong> Implementation after 10 invalid authentication attempts</li>
+    <li><strong>8.1:</strong> Authentication policies and procedures documentation</li>
+    <li><strong>8.3:</strong> Password/passphrase policies (12+ characters, complexity, history)</li>
+    <li><strong>8.5.1:</strong> MFA system anti-replay protection and factor requirements</li>
+    <li><strong>8.6:</strong> Session timeout controls (15-minute inactivity)</li>
+    <li><strong>Account lockout:</strong> Implementation after 10 invalid authentication attempts</li>
 </ul>
-<p><strong>GCP Tools and Recommendations:</strong></p>
+
+<h4>GCP Recommendations:</h4>
 <ul>
-<li>Use Advanced Protection Program for high-risk users</li>
-<li>Implement Security Keys (FIDO2) for phishing-resistant authentication</li>
-<li>Configure Context-Aware Access for conditional authentication</li>
-<li>Use Cloud Identity for centralized MFA management</li>
-<li>Enable OS Login for centralized authentication on Compute Engine</li>
-<li>Configure Identity-Aware Proxy for application-level authentication</li>
-<li>Use Cloud Audit Logs for authentication event monitoring</li>
-<li>Implement Security Command Center for centralized security monitoring</li>
-</ul>"
+    <li>Enable Advanced Protection Program for high-risk users</li>
+    <li>Implement Security Keys (FIDO2) for phishing-resistant authentication</li>
+    <li>Configure Context-Aware Access for conditional authentication</li>
+    <li>Use Cloud Identity for centralized MFA management</li>
+    <li>Enable OS Login for centralized authentication on Compute Engine</li>
+    <li>Configure Identity-Aware Proxy for application-level authentication</li>
+</ul>
+"
 
-add_html_section "$OUTPUT_FILE" "Manual Verification Requirements" "$manual_checks" "warning"
-((warning_checks++))
-((total_checks++))
+add_section "manual_verification" "Manual Verification Requirements" "$manual_requirements"
 
-#----------------------------------------------------------------------
+# Finalize the report
+finalize_report
 
-#----------------------------------------------------------------------
-# FINAL REPORT
-#----------------------------------------------------------------------
-
-# Finalize HTML report using shared library
-# Add final summary metrics
-add_summary_metrics "$OUTPUT_FILE" "$total_checks" "$passed_checks" "$failed_checks" "$warning_checks"
-
-# Finalize HTML report using shared library
-finalize_report "$OUTPUT_FILE" "${REQUIREMENT_NUMBER}"
-
-# Display final summary using shared library
-# Display final summary using shared library
-print_status "INFO" "=== ASSESSMENT SUMMARY ==="
-print_status "INFO" "Total checks: $total_checks"
-print_status "PASS" "Passed: $passed_checks"
-print_status "FAIL" "Failed: $failed_checks"
-print_status "WARN" "Warnings: $warning_checks"
-print_status "INFO" "Report has been generated: $OUTPUT_FILE"
-print_status "PASS" "=================================================================="
+debug_log "PCI DSS Requirement 8 assessment completed"

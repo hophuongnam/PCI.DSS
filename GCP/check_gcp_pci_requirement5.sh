@@ -81,14 +81,14 @@ assess_antimalware_solutions() {
     local section_title="5.1 - Anti-malware Solutions"
     local check_title="Compute Engine Anti-malware Protection"
     
-    debug_log "Assessing anti-malware solutions for project: $project_id"
+    log_debug "Assessing anti-malware solutions for project: $project_id"
     
     # Get Compute Engine instances
     local instances
     instances=$(gcloud compute instances list --project="$project_id" --format="value(name,zone,status)" 2>/dev/null)
     
     if [[ -z "$instances" ]]; then
-        add_check_result "$check_title" "INFO" "No Compute Engine instances found in project $project_id"
+        add_check_result "$OUTPUT_FILE" "info" "$check_title" "No Compute Engine instances found in project $project_id"
         return 0
     fi
     
@@ -128,15 +128,15 @@ assess_antimalware_solutions() {
         
     done <<< "$instances"
     
-    local status="PASS"
+    local status="pass"
     local message="Anti-malware protection: $protected_instances/$total_instances instances protected"
     
     if [[ $protected_instances -lt $total_instances ]]; then
-        status="FAIL"
+        status="fail"
         message="Anti-malware protection gaps: $((total_instances - protected_instances)) unprotected instances"
     fi
     
-    add_check_result "$check_title" "$status" "$message" "$details"
+    add_check_result "$OUTPUT_FILE" "$status" "$check_title" "$message" "$details"
 }
 
 # 5.2 - Malware prevention, detection, and addressing mechanisms  
@@ -145,21 +145,21 @@ assess_malware_detection() {
     local section_title="5.2 - Malware Detection"
     local check_title="OS Config Patch Management"
     
-    debug_log "Assessing malware detection mechanisms for project: $project_id"
+    log_debug "Assessing malware detection mechanisms for project: $project_id"
     
     # Check for OS Config patch policies
     local patch_policies
     patch_policies=$(gcloud compute os-config patch-policies list --project="$project_id" --format="value(name)" 2>/dev/null)
     
     if [[ -z "$patch_policies" ]]; then
-        add_check_result "$check_title" "FAIL" "No OS Config patch policies found" "Consider creating patch policies for regular security updates"
+        add_check_result "$OUTPUT_FILE" "fail" "$check_title" "No OS Config patch policies found" "Consider creating patch policies for regular security updates"
         return 1
     fi
     
     local policy_count
     policy_count=$(echo "$patch_policies" | wc -l)
     
-    add_check_result "$check_title" "PASS" "OS Config patch policies configured: $policy_count policies" "Found patch management policies for automated security updates"
+    add_check_result "$OUTPUT_FILE" "pass" "$check_title" "OS Config patch policies configured: $policy_count policies" "Found patch management policies for automated security updates"
     
     # Check Container Analysis for vulnerability scanning
     local check_title2="Container Analysis Vulnerability Scanning"
@@ -167,9 +167,9 @@ assess_malware_detection() {
     images=$(gcloud container images list --project="$project_id" --format="value(name)" --limit=5 2>/dev/null)
     
     if [[ -n "$images" ]]; then
-        add_check_result "$check_title2" "INFO" "Container images detected" "Container Analysis should be enabled for vulnerability scanning"
+        add_check_result "$OUTPUT_FILE" "info" "$check_title2" "Container images detected" "Container Analysis should be enabled for vulnerability scanning"
     else
-        add_check_result "$check_title2" "INFO" "No container images found" "Container Analysis not applicable"
+        add_check_result "$OUTPUT_FILE" "info" "$check_title2" "No container images found" "Container Analysis not applicable"
     fi
 }
 
@@ -179,18 +179,18 @@ assess_antimalware_monitoring() {
     local section_title="5.3 - Anti-malware Monitoring"
     local check_title="Cloud Scheduler Monitoring Jobs"
     
-    debug_log "Assessing anti-malware monitoring for project: $project_id"
+    log_debug "Assessing anti-malware monitoring for project: $project_id"
     
     # Check for Cloud Scheduler jobs for monitoring
     local scheduler_jobs
     scheduler_jobs=$(gcloud scheduler jobs list --project="$project_id" --format="value(name)" 2>/dev/null)
     
     if [[ -z "$scheduler_jobs" ]]; then
-        add_check_result "$check_title" "WARN" "No Cloud Scheduler jobs found" "Consider implementing automated monitoring schedules"
+        add_check_result "$OUTPUT_FILE" "warning" "$check_title" "No Cloud Scheduler jobs found" "Consider implementing automated monitoring schedules"
     else
         local job_count
         job_count=$(echo "$scheduler_jobs" | wc -l)
-        add_check_result "$check_title" "PASS" "Scheduled monitoring jobs: $job_count jobs" "Cloud Scheduler jobs configured for automated tasks"
+        add_check_result "$OUTPUT_FILE" "pass" "$check_title" "Scheduled monitoring jobs: $job_count jobs" "Cloud Scheduler jobs configured for automated tasks"
     fi
     
     # Check for Cloud Functions for monitoring
@@ -199,11 +199,11 @@ assess_antimalware_monitoring() {
     functions=$(gcloud functions list --project="$project_id" --format="value(name)" 2>/dev/null)
     
     if [[ -z "$functions" ]]; then
-        add_check_result "$check_title2" "INFO" "No Cloud Functions found" "No serverless monitoring functions detected"
+        add_check_result "$OUTPUT_FILE" "info" "$check_title2" "No Cloud Functions found" "No serverless monitoring functions detected"
     else
         local function_count
         function_count=$(echo "$functions" | wc -l)
-        add_check_result "$check_title2" "INFO" "Cloud Functions detected: $function_count functions" "Serverless functions available for monitoring tasks"
+        add_check_result "$OUTPUT_FILE" "info" "$check_title2" "Cloud Functions detected: $function_count functions" "Serverless functions available for monitoring tasks"
     fi
 }
 
@@ -213,18 +213,18 @@ assess_antiphishing_mechanisms() {
     local section_title="5.4 - Anti-phishing Mechanisms"
     local check_title="Cloud Armor Security Policies"
     
-    debug_log "Assessing anti-phishing mechanisms for project: $project_id"
+    log_debug "Assessing anti-phishing mechanisms for project: $project_id"
     
     # Check for Cloud Armor security policies
     local armor_policies
     armor_policies=$(gcloud compute security-policies list --project="$project_id" --format="value(name)" 2>/dev/null)
     
     if [[ -z "$armor_policies" ]]; then
-        add_check_result "$check_title" "WARN" "No Cloud Armor security policies found" "Consider implementing Cloud Armor for DDoS and application-layer protection"
+        add_check_result "$OUTPUT_FILE" "warning" "$check_title" "No Cloud Armor security policies found" "Consider implementing Cloud Armor for DDoS and application-layer protection"
     else
         local policy_count
         policy_count=$(echo "$armor_policies" | wc -l)
-        add_check_result "$check_title" "PASS" "Cloud Armor policies: $policy_count policies" "Security policies configured for web application protection"
+        add_check_result "$OUTPUT_FILE" "pass" "$check_title" "Cloud Armor policies: $policy_count policies" "Security policies configured for web application protection"
     fi
     
     # Check for firewall rules with anti-phishing considerations
@@ -233,17 +233,18 @@ assess_antiphishing_mechanisms() {
     firewall_rules=$(gcloud compute firewall-rules list --project="$project_id" --format="value(name,direction,action)" 2>/dev/null)
     
     if [[ -z "$firewall_rules" ]]; then
-        add_check_result "$check_title2" "FAIL" "No firewall rules found" "Firewall rules are required for network security"
+        add_check_result "$OUTPUT_FILE" "fail" "$check_title2" "No firewall rules found" "Firewall rules are required for network security"
     else
         local rule_count
         rule_count=$(echo "$firewall_rules" | wc -l)
         local deny_rules
-        deny_rules=$(echo "$firewall_rules" | grep -c "DENY" || echo "0")
+        deny_rules=$(echo "$firewall_rules" | grep -c "DENY" 2>/dev/null || echo "0")
+        deny_rules=$(echo "$deny_rules" | tr -d '\n\r ')
         
         if [[ $deny_rules -gt 0 ]]; then
-            add_check_result "$check_title2" "PASS" "Firewall rules configured: $rule_count total, $deny_rules deny rules" "Restrictive firewall rules help prevent malicious traffic"
+            add_check_result "$OUTPUT_FILE" "pass" "$check_title2" "Firewall rules configured: $rule_count total, $deny_rules deny rules" "Restrictive firewall rules help prevent malicious traffic"
         else
-            add_check_result "$check_title2" "WARN" "Firewall rules found but no explicit deny rules: $rule_count rules" "Consider implementing explicit deny rules for better security"
+            add_check_result "$OUTPUT_FILE" "warning" "$check_title2" "Firewall rules found but no explicit deny rules: $rule_count rules" "Consider implementing explicit deny rules for better security"
         fi
     fi
 }
@@ -251,9 +252,9 @@ assess_antiphishing_mechanisms() {
 # Core assessment function for project iteration
 assess_project() {
     local project_id="$1"
-    debug_log "Starting Requirement 5 assessment for project: $project_id"
+    log_debug "Starting Requirement 5 assessment for project: $project_id"
     
-    add_section "malware_protection" "PCI DSS Requirement 5: Malware Protection Assessment" "Assessment of anti-malware controls and monitoring for project $project_id"
+    add_section "$OUTPUT_FILE" "malware_protection" "PCI DSS Requirement 5: Malware Protection Assessment"
     
     # Run all assessment functions for this project
     assess_antimalware_solutions "$project_id"
@@ -264,7 +265,7 @@ assess_project() {
 
 # Main execution logic
 main() {
-    debug_log "Starting PCI DSS Requirement 5 assessment"
+    log_debug "Starting PCI DSS Requirement 5 assessment"
     
     # Get projects in scope
     local projects
@@ -275,17 +276,17 @@ main() {
         exit 1
     fi
     
-    debug_log "Found projects in scope: $(echo "$projects" | wc -l)"
+    log_debug "Found projects in scope: $(echo "$projects" | wc -l)"
     
     # Assess each project
     while IFS= read -r project_id; do
         [[ -z "$project_id" ]] && continue
-        debug_log "Processing project: $project_id"
+        log_debug "Processing project: $project_id"
         assess_project "$project_id"
     done <<< "$projects"
     
     # Finalize the report
-    finalize_report "$OUTPUT_FILE"
+    finalize_report "$OUTPUT_FILE" "5"
     
     print_status "INFO" "PCI DSS Requirement 5 assessment completed"
     print_status "INFO" "Report generated: $OUTPUT_FILE"

@@ -31,844 +31,526 @@ load_requirement_config "${REQUIREMENT_NUMBER}"
 # Validate scope and setup project context using shared library
 setup_assessment_scope || exit 1
 
-# Check permissions using shared library
-check_required_permissions "container.clusters.list" "cloudbuild.builds.list" || exit 1
+# Register required permissions for Requirement 6
+REQ6_PERMISSIONS=(
+    "cloudbuild.builds.list"
+    "container.images.list"
+    "compute.securityPolicies.list"
+    "appengine.applications.get"
+    "run.services.list"
+    "compute.urlMaps.list"
+    "storage.buckets.list"
+    "source.repos.list"
+)
 
-# Initialize HTML report using shared library
-# Set output file path
-OUTPUT_FILE="${REPORT_DIR}/pci_req${REQUIREMENT_NUMBER}_report_$(date +%Y%m%d_%H%M%S).html"
+register_required_permissions "$REQUIREMENT_NUMBER" "${REQ6_PERMISSIONS[@]}"
 
-# Initialize HTML report using shared library
-initialize_report "$OUTPUT_FILE" "PCI DSS 4.0.1 - Requirement $REQUIREMENT_NUMBER Compliance Assessment Report" "${REQUIREMENT_NUMBER}"
-
-
-
-
-
-
-
-
-
-
-
-print_status "INFO" "============================================="
-print_status "INFO" "  PCI DSS 4.0.1 - Requirement 6 (GCP)"
-print_status "INFO" "============================================="
-echo ""
-
-# Display scope information using shared library
-# Display scope information using shared library - now handled in print_status calls
-print_status "INFO" "Assessment scope: ${ASSESSMENT_SCOPE:-project}"
-if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
-    print_status "INFO" "Organization ID: ${ORG_ID}"
-else
-    print_status "INFO" "Project ID: ${PROJECT_ID}"
+# Validate GCP environment and check permissions
+validate_prerequisites || exit 1
+if ! check_all_permissions; then
+    prompt_continue_limited || exit 1
 fi
 
-echo ""
-echo "Starting assessment at $(date)"
-echo ""
-
-# Reset counters for actual compliance checks
-total_checks=0
-passed_checks=0
-warning_checks=0
-failed_checks=0
+# Initialize HTML report using modern framework pattern
+initialize_report "PCI DSS Requirement $REQUIREMENT_NUMBER Assessment" "$ASSESSMENT_SCOPE"
 
 
-# Function to check Cloud Build for secure CI/CD
-check_cloud_build_security() {
-    local details=""
-    local found_issues=false
+# Assessment function for secure development processes (PCI DSS 6.1, 6.2)
+assess_secure_development() {
+    local project_id="$1"
     
-    details+="<p>Analyzing Cloud Build for secure CI/CD practices:</p>"
+    info_log "Assessing secure development processes for project: $project_id"
+    
+    local check_status="PASS"
+    local details=""
+    local issues_found=0
+    
+    # Set project context if provided
+    local gcloud_cmd_prefix=""
+    if [[ -n "$project_id" ]]; then
+        gcloud_cmd_prefix="--project=$project_id"
+    fi
+    
+    details+="<h4>Secure CI/CD Pipeline Assessment</h4>"
+    details+="<p>Analyzing Cloud Build for secure development practices:</p><ul>"
     
     # Get Cloud Build triggers
     local triggers
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        details+="<p><strong>Organization-wide CI/CD assessment:</strong></p>"
-        triggers=$(run_gcp_command_across_projects "gcloud builds triggers list" "--format='value(name,github.name,substitutions)'")
+    triggers=$(gcloud builds triggers list $gcloud_cmd_prefix --format="value(name,github.name,substitutions)" 2>/dev/null)
+    
+    if [[ -z "$triggers" ]]; then
+        details+="<li>No Cloud Build triggers found - Manual verification required for secure development processes</li>"
+        check_status="MANUAL"
     else
-        triggers=$(gcloud builds triggers list --format="value(name,github.name,substitutions)" 2>/dev/null)
-    fi
-    
-    if [ -z "$triggers" ]; then
-        if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-            details+="<p>No Cloud Build triggers found in organization $DEFAULT_ORG.</p>"
-        else
-            details+="<p>No Cloud Build triggers found in project $DEFAULT_PROJECT.</p>"
-        fi
-        echo "$details"
-        return
-    fi
-    
-    details+="<ul>"
-    
-    while IFS=$'\t' read -r trigger_info; do
-        if [ -z "$trigger_info" ]; then
-            continue
-        fi
-        
-        # Parse trigger info for organization scope
-        if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-            local project_trigger=$(echo "$trigger_info" | cut -d'/' -f1)
-            local trigger_data=$(echo "$trigger_info" | cut -d'/' -f2-)
-            trigger_name=$(echo "$trigger_data" | cut -d$'\t' -f1)
-            repo_name=$(echo "$trigger_data" | cut -d$'\t' -f2)
-            substitutions=$(echo "$trigger_data" | cut -d$'\t' -f3)
-            
-            details+="<li><strong>Project:</strong> $project_trigger, <strong>Trigger:</strong> $trigger_name"
-        else
-            trigger_name=$(echo "$trigger_info" | cut -d$'\t' -f1)
-            repo_name=$(echo "$trigger_info" | cut -d$'\t' -f2)
-            substitutions=$(echo "$trigger_info" | cut -d$'\t' -f3)
+        while IFS=$'\t' read -r trigger_name repo_name substitutions; do
+            [[ -z "$trigger_name" ]] && continue
             
             details+="<li><strong>Trigger:</strong> $trigger_name"
-        fi
-        
-        if [ -n "$repo_name" ]; then
-            details+=" (Repository: $repo_name)"
-        fi
-        
-        # Check for security-related build steps
-        if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-            trigger_config=$(gcloud builds triggers describe "$trigger_name" --project="$project_trigger" --format="value(build)" 2>/dev/null)
-        else
-            trigger_config=$(gcloud builds triggers describe "$trigger_name" --format="value(build)" 2>/dev/null)
-        fi
-        
-        if echo "$trigger_config" | grep -i -E "security|scan|test|sast|dast|sonar|snyk|twistlock" > /dev/null; then
-            details+=" - <span class='green'>Security scanning steps detected</span>"
-        else
-            details+=" - <span class='yellow'>No obvious security scanning steps found</span>"
-            found_issues=true
-        fi
-        
-        # Check for substitution variables with sensitive information
-        if echo "$substitutions" | grep -i -E "key|secret|password|token" > /dev/null; then
-            details+=" - <span class='red'>Sensitive substitution variables detected</span>"
-            found_issues=true
-        fi
-        
-        details+="</li>"
-        
-    done <<< "$triggers"
+            [[ -n "$repo_name" ]] && details+=" (Repository: $repo_name)"
+            
+            # Check for security scanning steps
+            local trigger_config
+            trigger_config=$(gcloud builds triggers describe "$trigger_name" $gcloud_cmd_prefix --format="value(build)" 2>/dev/null)
+            
+            if echo "$trigger_config" | grep -qiE "security|scan|test|sast|dast|sonar|snyk|twistlock"; then
+                details+=" - <span class='check-pass'>Security scanning integrated</span>"
+            else
+                details+=" - <span class='check-warning'>No security scanning detected</span>"
+                ((issues_found++))
+                check_status="WARNING"
+            fi
+            
+            # Check for sensitive substitutions
+            if echo "$substitutions" | grep -qiE "key|secret|password|token"; then
+                details+=" - <span class='check-fail'>Sensitive variables in substitutions</span>"
+                ((issues_found++))
+                check_status="FAIL"
+            fi
+            
+            details+="</li>"
+        done <<< "$triggers"
+    fi
     
     details+="</ul>"
     
-    echo "$details"
-    if [ "$found_issues" = true ]; then
-        return 1
-    else
-        return 0
-    fi
+    # Add secure development guidance
+    details+="<h4>Secure Development Requirements</h4>"
+    details+="<ul><li>Security training for developers</li>"
+    details+="<li>Secure coding standards implementation</li>"
+    details+="<li>Code review processes for security</li>"
+    details+="<li>Static and dynamic application security testing</li></ul>"
+    
+    add_check_result "Secure Development Processes" "$check_status" "$details"
+    
+    debug_log "Secure development assessment complete: $check_status ($issues_found issues)"
 }
 
-print_status "INFO" "============================================="
-print_status "INFO" "  PCI DSS 4.0.1 - Requirement 6 (GCP)"
-print_status "INFO" "============================================="
-echo ""
-
-# Display scope information using shared library
-# Display scope information using shared library - now handled in print_status calls
-print_status "INFO" "Assessment scope: ${ASSESSMENT_SCOPE:-project}"
-if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
-    print_status "INFO" "Organization ID: ${ORG_ID}"
-else
-    print_status "INFO" "Project ID: ${PROJECT_ID}"
-fi
-
-echo ""
-echo "Starting assessment at $(date)"
-echo ""
-
-# Reset counters for actual compliance checks
-total_checks=0
-passed_checks=0
-warning_checks=0
-failed_checks=0
-
-
-# Function to check Container Registry/Artifact Registry for vulnerability scanning
-check_container_security() {
-    local details=""
-    local found_issues=false
+# Assessment function for vulnerability management (PCI DSS 6.3)
+assess_vulnerability_management() {
+    local project_id="$1"
     
-    details+="<p>Analyzing container repositories for vulnerability scanning:</p>"
+    info_log "Assessing vulnerability management for project: $project_id"
+    
+    local check_status="PASS"
+    local details=""
+    local critical_vulns=0
+    
+    # Set project context if provided
+    local gcloud_cmd_prefix=""
+    if [[ -n "$project_id" ]]; then
+        gcloud_cmd_prefix="--project=$project_id"
+    fi
+    
+    details+="<h4>Container Vulnerability Management</h4>"
     
     # Check Artifact Registry repositories
     local ar_repos
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        ar_repos=$(run_gcp_command_across_projects "gcloud artifacts repositories list" "--format='value(name,format)'")
-    else
-        ar_repos=$(gcloud artifacts repositories list --format="value(name,format)" 2>/dev/null)
-    fi
+    ar_repos=$(gcloud artifacts repositories list $gcloud_cmd_prefix --format="value(name,format)" 2>/dev/null)
     
-    if [ -n "$ar_repos" ]; then
-        details+="<p>Artifact Registry repositories found:</p><ul>"
+    if [[ -n "$ar_repos" ]]; then
+        details+="<p><strong>Artifact Registry Repositories:</strong></p><ul>"
         
-        while IFS=$'\t' read -r repo_info; do
-            if [ -z "$repo_info" ]; then
-                continue
-            fi
+        while IFS=$'\t' read -r repo_name format; do
+            [[ -z "$repo_name" ]] && continue
             
-            # Parse repo info for organization scope
-            if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-                local project_repo=$(echo "$repo_info" | cut -d'/' -f1)
-                local repo_data=$(echo "$repo_info" | cut -d'/' -f2-)
-                repo_name=$(echo "$repo_data" | cut -d$'\t' -f1)
-                format=$(echo "$repo_data" | cut -d$'\t' -f2)
+            if [[ "$format" == "DOCKER" ]]; then
+                details+="<li><strong>Repository:</strong> $repo_name"
                 
-                if [ "$format" == "DOCKER" ]; then
-                    details+="<li><strong>Project:</strong> $project_repo, <strong>Docker repository:</strong> $repo_name"
-                    
-                    # Check for vulnerability scanning configuration
-                    scan_config=$(gcloud artifacts repositories describe "$repo_name" --project="$project_repo" --format="value(vulnerabilityScanningConfig)" 2>/dev/null)
-                    
-                    if [ -n "$scan_config" ]; then
-                        details+=" - <span class='green'>Vulnerability scanning configured</span>"
-                    else
-                        details+=" - <span class='yellow'>Vulnerability scanning not detected</span>"
-                        found_issues=true
-                    fi
-                    
-                    details+="</li>"
-                fi
-            else
-                repo_name=$(echo "$repo_info" | cut -d$'\t' -f1)
-                format=$(echo "$repo_info" | cut -d$'\t' -f2)
+                # Check vulnerability scanning configuration
+                local scan_config
+                scan_config=$(gcloud artifacts repositories describe "$repo_name" $gcloud_cmd_prefix --format="value(vulnerabilityScanningConfig)" 2>/dev/null)
                 
-                if [ "$format" == "DOCKER" ]; then
-                    details+="<li><strong>Docker repository:</strong> $repo_name"
-                    
-                    # Check for vulnerability scanning configuration
-                    scan_config=$(gcloud artifacts repositories describe "$repo_name" --format="value(vulnerabilityScanningConfig)" 2>/dev/null)
-                    
-                    if [ -n "$scan_config" ]; then
-                        details+=" - <span class='green'>Vulnerability scanning configured</span>"
-                    else
-                        details+=" - <span class='yellow'>Vulnerability scanning not detected</span>"
-                        found_issues=true
-                    fi
-                    
-                    details+="</li>"
+                if [[ -n "$scan_config" ]]; then
+                    details+=" - <span class='check-pass'>Vulnerability scanning enabled</span>"
+                else
+                    details+=" - <span class='check-warning'>Vulnerability scanning not configured</span>"
+                    check_status="WARNING"
                 fi
+                details+="</li>"
             fi
-            
         done <<< "$ar_repos"
-        
         details+="</ul>"
     fi
     
-    # Check legacy Container Registry
+    # Check Container Registry images
     local gcr_images
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        gcr_images=$(run_gcp_command_across_projects "gcloud container images list" "--format='value(name)'")
-    else
-        gcr_images=$(gcloud container images list --format="value(name)" 2>/dev/null)
-    fi
+    gcr_images=$(gcloud container images list $gcloud_cmd_prefix --format="value(name)" 2>/dev/null)
     
-    if [ -n "$gcr_images" ]; then
-        details+="<p>Legacy Container Registry images found:</p><ul>"
+    if [[ -n "$gcr_images" ]]; then
+        details+="<p><strong>Container Registry Images:</strong></p><ul>"
         
-        echo "$gcr_images" | while IFS= read -r image; do
-            if [ -n "$image" ]; then
-                if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-                    project_image=$(echo "$image" | cut -d'/' -f1)
-                    image_name=$(echo "$image" | cut -d'/' -f2-)
-                    
-                    # Check for vulnerability scanning
-                    vulns=$(gcloud container images scan "$image_name" --project="$project_image" --format="value(vulnerabilities)" 2>/dev/null | grep -c "CRITICAL\|HIGH" || echo "0")
-                    
-                    if [ "$vulns" -gt 0 ]; then
-                        details+="<li class='red'>$project_image/$image_name - $vulns high/critical vulnerabilities found</li>"
-                        found_issues=true
-                    else
-                        details+="<li class='green'>$project_image/$image_name - No high/critical vulnerabilities detected</li>"
-                    fi
-                else
-                    vulns=$(gcloud container images scan "$image" --format="value(vulnerabilities)" 2>/dev/null | grep -c "CRITICAL\|HIGH" || echo "0")
-                    
-                    if [ "$vulns" -gt 0 ]; then
-                        details+="<li class='red'>$image - $vulns high/critical vulnerabilities found</li>"
-                        found_issues=true
-                    else
-                        details+="<li class='green'>$image - No high/critical vulnerabilities detected</li>"
-                    fi
-                fi
+        while IFS= read -r image; do
+            [[ -z "$image" ]] && continue
+            
+            # Check for vulnerabilities
+            local vulns
+            vulns=$(gcloud container images scan "$image" $gcloud_cmd_prefix --format="value(vulnerabilities.discovery.vulnerability)" 2>/dev/null | grep -c "CRITICAL\|HIGH" 2>/dev/null || echo "0")
+            
+            if [[ "$vulns" -gt 0 ]]; then
+                details+="<li><span class='check-fail'>$image - $vulns high/critical vulnerabilities</span></li>"
+                ((critical_vulns += vulns))
+                check_status="FAIL"
+            else
+                details+="<li><span class='check-pass'>$image - No critical vulnerabilities detected</span></li>"
             fi
-        done
-        
+        done <<< "$gcr_images"
         details+="</ul>"
     fi
     
-    if [ -z "$ar_repos" ] && [ -z "$gcr_images" ]; then
-        if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-            details+="<p>No container repositories found in organization $DEFAULT_ORG.</p>"
-        else
-            details+="<p>No container repositories found in project $DEFAULT_PROJECT.</p>"
-        fi
+    if [[ -z "$ar_repos" && -z "$gcr_images" ]]; then
+        details+="<p>No container repositories found - Manual verification required</p>"
+        check_status="MANUAL"
     fi
     
-    echo "$details"
-    if [ "$found_issues" = true ]; then
-        return 1
-    else
-        return 0
-    fi
+    # Add vulnerability management guidance
+    details+="<h4>Vulnerability Management Requirements</h4>"
+    details+="<ul><li>Regular vulnerability scanning of all container images</li>"
+    details+="<li>Automated vulnerability detection in CI/CD pipelines</li>"
+    details+="<li>Timely remediation of critical and high vulnerabilities</li>"
+    details+="<li>Security monitoring and alerting for new vulnerabilities</li></ul>"
+    
+    add_check_result "Vulnerability Management" "$check_status" "$details"
+    
+    debug_log "Vulnerability management assessment complete: $check_status ($critical_vulns critical vulnerabilities)"
 }
 
-print_status "INFO" "============================================="
-print_status "INFO" "  PCI DSS 4.0.1 - Requirement 6 (GCP)"
-print_status "INFO" "============================================="
-echo ""
-
-# Display scope information using shared library
-# Display scope information using shared library - now handled in print_status calls
-print_status "INFO" "Assessment scope: ${ASSESSMENT_SCOPE:-project}"
-if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
-    print_status "INFO" "Organization ID: ${ORG_ID}"
-else
-    print_status "INFO" "Project ID: ${PROJECT_ID}"
-fi
-
-echo ""
-echo "Starting assessment at $(date)"
-echo ""
-
-# Reset counters for actual compliance checks
-total_checks=0
-passed_checks=0
-warning_checks=0
-failed_checks=0
-
-
-# Function to check web application protection
-check_web_app_protection() {
+# Assessment function for web application protection (PCI DSS 6.4)
+assess_web_protection() {
+    local project_id="$1"
+    
+    info_log "Assessing web application protection for project: $project_id"
+    
+    local check_status="PASS"
     local details=""
-    local found_issues=false
+    local unprotected_services=0
     
-    details+="<p>Checking web application protection mechanisms:</p>"
+    # Set project context if provided
+    local gcloud_cmd_prefix=""
+    if [[ -n "$project_id" ]]; then
+        gcloud_cmd_prefix="--project=$project_id"
+    fi
     
-    # Check for Cloud Armor security policies
+    details+="<h4>Web Application Protection Assessment</h4>"
+    
+    # Check Cloud Armor security policies
     local armor_policies
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        armor_policies=$(run_gcp_command_across_projects "gcloud compute security-policies list" "--format='value(name,description)'")
-    else
-        armor_policies=$(gcloud compute security-policies list --format="value(name,description)" 2>/dev/null)
-    fi
+    armor_policies=$(gcloud compute security-policies list $gcloud_cmd_prefix --format="value(name,description)" 2>/dev/null)
     
-    if [ -z "$armor_policies" ]; then
-        details+="<p class='red'>No Cloud Armor security policies found. Public-facing web applications should be protected by a web application firewall.</p>"
-        found_issues=true
+    if [[ -z "$armor_policies" ]]; then
+        details+="<p><span class='check-warning'>No Cloud Armor security policies found</span></p>"
+        details+="<p>Web applications should be protected by Web Application Firewall (WAF)</p>"
+        check_status="WARNING"
     else
-        details+="<p>Cloud Armor security policies found:</p><ul>"
-        
-        echo "$armor_policies" | while IFS=$'\t' read -r policy_info; do
-            if [ -n "$policy_info" ]; then
-                if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-                    project_policy=$(echo "$policy_info" | cut -d'/' -f1)
-                    policy_data=$(echo "$policy_info" | cut -d'/' -f2-)
-                    details+="<li><strong>Project:</strong> $project_policy, <strong>Policy:</strong> $policy_data</li>"
-                else
-                    details+="<li><strong>Policy:</strong> $policy_info</li>"
-                fi
-            fi
-        done
-        
+        details+="<p><strong>Cloud Armor Policies:</strong></p><ul>"
+        while IFS=$'\t' read -r policy_name description; do
+            [[ -z "$policy_name" ]] && continue
+            details+="<li><span class='check-pass'>Policy: $policy_name</span>"
+            [[ -n "$description" ]] && details+=" - $description"
+            details+="</li>"
+        done <<< "$armor_policies"
         details+="</ul>"
     fi
     
-    # Check for Load Balancer security configurations
-    local load_balancers
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        load_balancers=$(run_gcp_command_across_projects "gcloud compute backend-services list" "--format='value(name,securityPolicy)'")
-    else
-        load_balancers=$(gcloud compute backend-services list --format="value(name,securityPolicy)" 2>/dev/null)
-    fi
+    # Check backend services for security policy attachment
+    local backend_services
+    backend_services=$(gcloud compute backend-services list $gcloud_cmd_prefix --format="value(name,securityPolicy)" 2>/dev/null)
     
-    if [ -n "$load_balancers" ]; then
-        details+="<p>Load balancer security analysis:</p><ul>"
+    if [[ -n "$backend_services" ]]; then
+        details+="<p><strong>Backend Services Security:</strong></p><ul>"
         
-        echo "$load_balancers" | while IFS=$'\t' read -r lb_info; do
-            if [ -n "$lb_info" ]; then
-                if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-                    project_lb=$(echo "$lb_info" | cut -d'/' -f1)
-                    lb_data=$(echo "$lb_info" | cut -d'/' -f2-)
-                    lb_name=$(echo "$lb_data" | cut -d$'\t' -f1)
-                    security_policy=$(echo "$lb_data" | cut -d$'\t' -f2)
-                    
-                    if [ -n "$security_policy" ]; then
-                        details+="<li class='green'>$project_lb/$lb_name has security policy: $security_policy</li>"
-                    else
-                        details+="<li class='yellow'>$project_lb/$lb_name has no security policy attached</li>"
-                        found_issues=true
-                    fi
-                else
-                    lb_name=$(echo "$lb_info" | cut -d$'\t' -f1)
-                    security_policy=$(echo "$lb_info" | cut -d$'\t' -f2)
-                    
-                    if [ -n "$security_policy" ]; then
-                        details+="<li class='green'>$lb_name has security policy: $security_policy</li>"
-                    else
-                        details+="<li class='yellow'>$lb_name has no security policy attached</li>"
-                        found_issues=true
-                    fi
-                fi
+        while IFS=$'\t' read -r service_name security_policy; do
+            [[ -z "$service_name" ]] && continue
+            
+            if [[ -n "$security_policy" ]]; then
+                details+="<li><span class='check-pass'>$service_name - Protected by: $security_policy</span></li>"
+            else
+                details+="<li><span class='check-warning'>$service_name - No security policy attached</span></li>"
+                ((unprotected_services++))
+                check_status="WARNING"
             fi
-        done
-        
+        done <<< "$backend_services"
         details+="</ul>"
     fi
     
-    echo "$details"
-    if [ "$found_issues" = true ]; then
-        return 1
-    else
-        return 0
+    # Check App Engine applications
+    local app_info
+    app_info=$(gcloud app describe $gcloud_cmd_prefix --format="value(id,servingStatus)" 2>/dev/null)
+    
+    if [[ -n "$app_info" ]]; then
+        details+="<p><strong>App Engine Applications:</strong></p><ul>"
+        details+="<li>App Engine detected - Ensure firewall rules restrict access appropriately</li>"
+        details+="<li>Manual verification required for App Engine security configuration</li>"
+        details+="</ul>"
+        [[ "$check_status" == "PASS" ]] && check_status="MANUAL"
     fi
+    
+    # Add web protection guidance
+    details+="<h4>Web Application Protection Requirements</h4>"
+    details+="<ul><li>Web Application Firewall (WAF) protection for public applications</li>"
+    details+="<li>Input validation and output encoding</li>"
+    details+="<li>Secure coding practices for web applications</li>"
+    details+="<li>Regular security testing and penetration testing</li>"
+    details+="<li>SSL/TLS encryption for data transmission</li></ul>"
+    
+    add_check_result "Web Application Protection" "$check_status" "$details"
+    
+    debug_log "Web protection assessment complete: $check_status ($unprotected_services unprotected services)"
 }
 
-print_status "INFO" "============================================="
-print_status "INFO" "  PCI DSS 4.0.1 - Requirement 6 (GCP)"
-print_status "INFO" "============================================="
-echo ""
-
-# Display scope information using shared library
-# Display scope information using shared library - now handled in print_status calls
-print_status "INFO" "Assessment scope: ${ASSESSMENT_SCOPE:-project}"
-if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
-    print_status "INFO" "Organization ID: ${ORG_ID}"
-else
-    print_status "INFO" "Project ID: ${PROJECT_ID}"
-fi
-
-echo ""
-echo "Starting assessment at $(date)"
-echo ""
-
-# Reset counters for actual compliance checks
-total_checks=0
-passed_checks=0
-warning_checks=0
-failed_checks=0
-
-
-# Function to check change management and environment separation
-check_change_management() {
+# Assessment function for change management (PCI DSS 6.5)
+assess_change_management() {
+    local project_id="$1"
+    
+    info_log "Assessing change management processes for project: $project_id"
+    
+    local check_status="PASS"
     local details=""
-    local found_issues=false
+    local change_mgmt_issues=0
     
-    details+="<p>Analyzing change management and environment separation:</p>"
-    
-    # Check for Cloud Functions with environment indicators
-    local functions
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        functions=$(run_gcp_command_across_projects "gcloud functions list" "--format='value(name,status)'")
-    else
-        functions=$(gcloud functions list --format="value(name,status)" 2>/dev/null)
+    # Set project context if provided
+    local gcloud_cmd_prefix=""
+    if [[ -n "$project_id" ]]; then
+        gcloud_cmd_prefix="--project=$project_id"
     fi
     
-    if [ -n "$functions" ]; then
-        details+="<p>Cloud Functions environment analysis:</p>"
+    details+="<h4>Change Management Assessment</h4>"
+    
+    # Check Cloud Source Repositories for version control
+    local repos
+    repos=$(gcloud source repos list $gcloud_cmd_prefix --format="value(name)" 2>/dev/null)
+    
+    if [[ -n "$repos" ]]; then
+        details+="<p><strong>Source Code Management:</strong></p><ul>"
+        while IFS= read -r repo; do
+            [[ -z "$repo" ]] && continue
+            details+="<li><span class='check-pass'>Repository: $repo</span></li>"
+        done <<< "$repos"
+        details+="</ul>"
+    else
+        details+="<p><span class='check-warning'>No Cloud Source Repositories found</span></p>"
+        details+="<p>Version control is essential for change management</p>"
+        ((change_mgmt_issues++))
+        check_status="WARNING"
+    fi
+    
+    # Check App Engine versions for deployment management
+    local app_versions
+    app_versions=$(gcloud app versions list $gcloud_cmd_prefix --format="value(service,version,traffic_split)" 2>/dev/null)
+    
+    if [[ -n "$app_versions" ]]; then
+        details+="<p><strong>App Engine Version Management:</strong></p><ul>"
         
-        # Analyze function names for environment patterns
+        local services
+        services=$(echo "$app_versions" | cut -d$'\t' -f1 | sort | uniq)
+        
+        for service in $services; do
+            local versions_count
+            versions_count=$(echo "$app_versions" | grep "^$service" | wc -l)
+            details+="<li><span class='check-pass'>Service $service: $versions_count versions</span></li>"
+        done
+        details+="</ul>"
+    fi
+    
+    # Check Cloud Functions for environment patterns
+    local functions
+    functions=$(gcloud functions list $gcloud_cmd_prefix --format="value(name,status)" 2>/dev/null)
+    
+    if [[ -n "$functions" ]]; then
+        details+="<p><strong>Cloud Functions Environment Analysis:</strong></p>"
+        
         local env_patterns
-        if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-            env_patterns=$(echo "$functions" | cut -d'/' -f2 | cut -d$'\t' -f1 | grep -o -E '(dev|test|stage|staging|prod|production)' | sort | uniq -c)
-        else
-            env_patterns=$(echo "$functions" | cut -d$'\t' -f1 | grep -o -E '(dev|test|stage|staging|prod|production)' | sort | uniq -c)
-        fi
+        env_patterns=$(echo "$functions" | cut -d$'\t' -f1 | grep -oE '(dev|test|stage|staging|prod|production)' | sort | uniq -c)
         
-        if [ -n "$env_patterns" ]; then
+        if [[ -n "$env_patterns" ]]; then
             details+="<ul>"
             while read -r count env; do
-                details+="<li>$env environment: $count functions</li>"
+                details+="<li><span class='check-pass'>$env environment: $count functions</span></li>"
             done <<< "$env_patterns"
             details+="</ul>"
         else
-            details+="<p class='yellow'>No clear environment naming patterns detected in function names.</p>"
-            found_issues=true
+            details+="<p><span class='check-warning'>No environment naming patterns detected</span></p>"
+            ((change_mgmt_issues++))
+            [[ "$check_status" == "PASS" ]] && check_status="WARNING"
         fi
     fi
     
-    # Check for App Engine services with versions (indicates change management)
-    local app_versions
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        app_versions=$(run_gcp_command_across_projects "gcloud app versions list" "--format='value(service,version,traffic_split)'")
-    else
-        app_versions=$(gcloud app versions list --format="value(service,version,traffic_split)" 2>/dev/null)
+    # Check Cloud Build for CI/CD processes
+    local builds
+    builds=$(gcloud builds list $gcloud_cmd_prefix --limit=10 --format="value(id,status)" 2>/dev/null)
+    
+    if [[ -n "$builds" ]]; then
+        details+="<p><strong>CI/CD Pipeline Activity:</strong></p>"
+        local recent_builds
+        recent_builds=$(echo "$builds" | wc -l)
+        details+="<p>Recent builds detected ($recent_builds) - Indicates active CI/CD processes</p>"
     fi
     
-    if [ -n "$app_versions" ]; then
-        details+="<p>App Engine version management:</p><ul>"
-        
-        local services
-        if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-            services=$(echo "$app_versions" | cut -d'/' -f2 | cut -d$'\t' -f1 | sort | uniq)
-        else
-            services=$(echo "$app_versions" | cut -d$'\t' -f1 | sort | uniq)
-        fi
-        
-        for service in $services; do
-            if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-                versions_count=$(echo "$app_versions" | grep "/$service" | wc -l)
-            else
-                versions_count=$(echo "$app_versions" | grep "^$service" | wc -l)
-            fi
-            details+="<li>Service $service: $versions_count versions deployed</li>"
-        done
-        
-        details+="</ul>"
-    else
-        details+="<p>No App Engine services found.</p>"
-    fi
+    # Add change management guidance
+    details+="<h4>Change Management Requirements</h4>"
+    details+="<ul><li>Version control for all code changes</li>"
+    details+="<li>Environment separation (dev, test, prod)</li>"
+    details+="<li>Formal change approval processes</li>"
+    details+="<li>Automated testing before production deployment</li>"
+    details+="<li>Rollback procedures for failed deployments</li></ul>"
     
-    # Check for Cloud Source Repositories (code management)
-    local repos
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        repos=$(run_gcp_command_across_projects "gcloud source repos list" "--format='value(name)'")
-    else
-        repos=$(gcloud source repos list --format="value(name)" 2>/dev/null)
-    fi
+    add_check_result "Change Management" "$check_status" "$details"
     
-    if [ -n "$repos" ]; then
-        details+="<p class='green'>Cloud Source Repositories found for code management:</p><ul>"
-        echo "$repos" | while IFS= read -r repo; do
-            if [ -n "$repo" ]; then
-                details+="<li>$repo</li>"
-            fi
-        done
-        details+="</ul>"
-    else
-        details+="<p class='yellow'>No Cloud Source Repositories found. Consider using version control for change management.</p>"
-        found_issues=true
-    fi
-    
-    echo "$details"
-    if [ "$found_issues" = true ]; then
-        return 1
-    else
-        return 0
-    fi
+    debug_log "Change management assessment complete: $check_status ($change_mgmt_issues issues)"
 }
 
-print_status "INFO" "============================================="
-print_status "INFO" "  PCI DSS 4.0.1 - Requirement 6 (GCP)"
-print_status "INFO" "============================================="
-echo ""
-
-# Display scope information using shared library
-# Display scope information using shared library - now handled in print_status calls
-print_status "INFO" "Assessment scope: ${ASSESSMENT_SCOPE:-project}"
-if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
-    print_status "INFO" "Organization ID: ${ORG_ID}"
-else
-    print_status "INFO" "Project ID: ${PROJECT_ID}"
-fi
-
-echo ""
-echo "Starting assessment at $(date)"
-echo ""
-
-# Reset counters for actual compliance checks
-total_checks=0
-passed_checks=0
-warning_checks=0
-failed_checks=0
-
-
-# Function to check for secure development practices
-check_secure_development() {
+# Assessment function for secure development lifecycle practices
+assess_secure_development_lifecycle() {
+    local project_id="$1"
+    
+    info_log "Assessing secure development lifecycle for project: $project_id"
+    
+    local check_status="PASS"
     local details=""
-    local found_issues=false
+    local security_gaps=0
     
-    details+="<p>Checking secure development practices in GCP:</p>"
+    # Set project context if provided
+    local gcloud_cmd_prefix=""
+    if [[ -n "$project_id" ]]; then
+        gcloud_cmd_prefix="--project=$project_id"
+    fi
     
-    # Check for Secret Manager usage (secure secrets management)
+    details+="<h4>Secure Development Lifecycle Assessment</h4>"
+    
+    # Check Secret Manager for secure credential management
     local secrets
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        secrets=$(run_gcp_command_across_projects "gcloud secrets list" "--format='value(name)'")
+    secrets=$(gcloud secrets list $gcloud_cmd_prefix --format="value(name)" 2>/dev/null)
+    
+    if [[ -n "$secrets" ]]; then
+        local secrets_count
+        secrets_count=$(echo "$secrets" | wc -l)
+        details+="<p><strong>Secret Management:</strong></p>"
+        details+="<p><span class='check-pass'>Secret Manager in use: $secrets_count secrets managed</span></p>"
     else
-        secrets=$(gcloud secrets list --format="value(name)" 2>/dev/null)
+        details+="<p><span class='check-warning'>No Secret Manager usage detected</span></p>"
+        details+="<p>Secure credential management is essential for development security</p>"
+        ((security_gaps++))
+        check_status="WARNING"
     fi
     
-    if [ -n "$secrets" ]; then
-        local secrets_count=$(echo "$secrets" | wc -l)
-        details+="<p class='green'>Secret Manager is being used for secure secrets management: $secrets_count secrets managed</p>"
+    # Check Cloud KMS for encryption key management
+    local kms_keyrings
+    kms_keyrings=$(gcloud kms keyrings list $gcloud_cmd_prefix --location=global --format="value(name)" 2>/dev/null)
+    
+    if [[ -n "$kms_keyrings" ]]; then
+        details+="<p><strong>Encryption Key Management:</strong></p>"
+        details+="<p><span class='check-pass'>Cloud KMS in use for key management</span></p>"
     else
-        details+="<p class='yellow'>No secrets found in Secret Manager. Consider using it for secure credential management.</p>"
-        found_issues=true
+        details+="<p><span class='check-warning'>No Cloud KMS keyrings found</span></p>"
+        details+="<p>Consider using Cloud KMS for encryption key management</p>"
+        ((security_gaps++))
+        [[ "$check_status" == "PASS" ]] && check_status="WARNING"
     fi
     
-    # Check for Cloud KMS for encryption key management
-    local kms_keys
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        # For organization scope, check across all projects
-        details+="<p>Cloud KMS usage across organization (limited to checking global keyring):</p>"
-        kms_keys=$(run_gcp_command_across_projects "gcloud kms keys list --location=global --keyring=default" "--format='value(name)'" || echo "")
+    # Check for Binary Authorization (secure container deployment)
+    local binary_auth
+    binary_auth=$(gcloud container binauthz policy export $gcloud_cmd_prefix 2>/dev/null)
+    
+    if [[ -n "$binary_auth" ]] && echo "$binary_auth" | grep -q "requireAttestationsBy"; then
+        details+="<p><strong>Binary Authorization:</strong></p>"
+        details+="<p><span class='check-pass'>Binary Authorization policy configured</span></p>"
     else
-        kms_keys=$(gcloud kms keys list --location=global --keyring=projects/$DEFAULT_PROJECT/locations/global/keyRings/default --format="value(name)" 2>/dev/null || echo "")
+        details+="<p><span class='check-info'>Binary Authorization not configured</span></p>"
+        details+="<p>Consider Binary Authorization for secure container deployment</p>"
     fi
     
-    if [ -n "$kms_keys" ]; then
-        details+="<p class='green'>Cloud KMS is being used for encryption key management.</p>"
-    else
-        details+="<p class='yellow'>No Cloud KMS keys found in default keyring. Consider using KMS for encryption key management.</p>"
-        found_issues=true
-    fi
+    # Add secure development requirements
+    details+="<h4>Secure Development Lifecycle Requirements</h4>"
+    details+="<ul><li><strong>Security Training:</strong> Annual developer security training</li>"
+    details+="<li><strong>Secure Coding:</strong> Implementation of secure coding standards</li>"
+    details+="<li><strong>Code Review:</strong> Security-focused code review processes</li>"
+    details+="<li><strong>Security Testing:</strong> SAST/DAST integration in CI/CD</li>"
+    details+="<li><strong>Dependency Management:</strong> Third-party component vulnerability scanning</li>"
+    details+="<li><strong>Secret Management:</strong> No hardcoded credentials in code</li></ul>"
     
-    # Manual verification requirements
-    details+="<p><strong>Manual verification required for:</strong></p><ul>"
-    details+="<li>Developer security training (at least annually)</li>"
-    details+="<li>Code review processes for security vulnerabilities</li>"
-    details+="<li>Secure coding guidelines implementation</li>"
-    details+="<li>Security testing integration in CI/CD pipelines</li>"
-    details+="<li>Third-party component vulnerability management</li>"
-    details+="</ul>"
+    add_check_result "Secure Development Lifecycle" "$check_status" "$details"
     
-    echo "$details"
-    if [ "$found_issues" = true ]; then
-        return 1
-    else
-        return 0
-    fi
+    debug_log "Secure development lifecycle assessment complete: $check_status ($security_gaps gaps)"
 }
 
-# Validate scope and requirements
-if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-    if [ -z "$DEFAULT_ORG" ]; then
-        print_status "FAIL" "Error: Organization scope requires an organization ID."
-        print_status "WARN" "Please provide organization ID with --org flag or ensure you have organization access."
-        exit 1
-    fi
-else
-    # Project scope validation
-    if [ -z "$DEFAULT_PROJECT" ]; then
-        print_status "FAIL" "Error: No project specified."
-        print_status "WARN" "Please set a default project with: gcloud config set project PROJECT_ID"
-        print_status "WARN" "Or specify a project with: --project PROJECT_ID"
-        exit 1
-    fi
-fi
-
-# Start script execution
-print_status "INFO" "============================================="
-print_status "INFO" "  PCI DSS 4.0.1 - Requirement $REQUIREMENT_NUMBER (GCP)"
-print_status "INFO" "  (Develop and Maintain Secure Systems)"
-print_status "INFO" "============================================="
-echo ""
-
-# Display scope information
-print_status "INFO" "Assessment Scope: $ASSESSMENT_SCOPE"
-if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-    print_status "INFO" "Organization: $DEFAULT_ORG"
-    print_status "WARN" "Note: Organization-wide assessment may take longer and requires broader permissions"
-else
-    print_status "INFO" "Project: $DEFAULT_PROJECT"
-fi
-echo ""
-
-# Initialize HTML report
-initialize_html_report "$OUTPUT_FILE" "$REPORT_TITLE"
-
-echo ""
-echo "Starting assessment at $(date)"
-echo ""
-
-#----------------------------------------------------------------------
-# SECTION 1: PERMISSIONS CHECK
-#----------------------------------------------------------------------
-add_html_section "$OUTPUT_FILE" "GCP Permissions Check" "<p>Verifying access to required GCP services for PCI Requirement $REQUIREMENT_NUMBER assessment...</p>" "info"
-
-print_status "INFO" "=== CHECKING REQUIRED GCP PERMISSIONS ==="
-
-# Check all required permissions based on scope
-if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-    # Organization-wide permission checks
-    check_gcp_permission "Projects" "list" "gcloud projects list --filter='parent.id:$DEFAULT_ORG' --limit=1"
-    ((total_checks++))
+# Main project assessment function
+assess_project() {
+    local project_id="$1"
     
-    check_gcp_permission "Organizations" "access" "gcloud organizations list --filter='name:organizations/$DEFAULT_ORG' --limit=1"
-    ((total_checks++))
-fi
+    info_log "Assessing project: $project_id"
+    
+    # Add project section to report
+    add_section "project_$project_id" "Project: $project_id"
+    
+    # Perform all assessments for this project
+    assess_secure_development "$project_id"
+    assess_vulnerability_management "$project_id"
+    assess_web_protection "$project_id"
+    assess_change_management "$project_id"
+    assess_secure_development_lifecycle "$project_id"
+    
+    debug_log "Completed assessment for project: $project_id"
+}
 
-# Scope-aware permission checks
-PROJECT_FLAG=""
-if [ "$ASSESSMENT_SCOPE" == "project" ]; then
-    PROJECT_FLAG="--project=$DEFAULT_PROJECT"
-fi
+# Main execution function
+main() {
+    info_log "Starting PCI DSS Requirement 6 assessment"
+    
+    # Initialize scope management and enumerate projects
+    local projects
+    projects=$(get_projects_in_scope)
+    
+    local project_count=0
+    while IFS= read -r project_data; do
+        [[ -z "$project_data" ]] && continue
+        
+        # Setup project context using scope management
+        assess_project "$project_data"
+        ((project_count++))
+        
+    done <<< "$projects"
+    
+    # Add manual verification guidance section
+    add_manual_verification_guidance
+    
+    # Generate final report
+    local output_file="pci_requirement6_assessment_$(date +%Y%m%d_%H%M%S).html"
+    finalize_report "$output_file" "$REQUIREMENT_NUMBER"
+    
+    print_status "PASS" "Assessment complete! Report saved to: $output_file"
+    print_status "INFO" "Projects assessed: $project_count"
+    
+    return 0
+}
 
-# Requirement 6 specific permission checks
-check_gcp_permission "Cloud Build" "triggers" "gcloud builds triggers list $PROJECT_FLAG --limit=1"
-((total_checks++))
-
-check_gcp_permission "Artifact Registry" "repositories" "gcloud artifacts repositories list $PROJECT_FLAG --limit=1"
-((total_checks++))
-
-check_gcp_permission "Container" "images" "gcloud container images list --limit=1"
-((total_checks++))
-
-check_gcp_permission "Compute Engine" "security-policies" "gcloud compute security-policies list $PROJECT_FLAG --limit=1"
-((total_checks++))
-
-check_gcp_permission "Secret Manager" "secrets" "gcloud secrets list $PROJECT_FLAG --limit=1"
-((total_checks++))
-
-# Calculate permissions percentage
-available_permissions=$((total_checks - access_denied_checks))
-if [ $available_permissions -gt 0 ]; then
-    permissions_percentage=$(( ((total_checks - access_denied_checks) * 100) / total_checks ))
-else
-    permissions_percentage=0
-fi
-
-if [ $permissions_percentage -lt 70 ]; then
-    print_status "FAIL" "WARNING: Insufficient permissions to perform a complete PCI Requirement $REQUIREMENT_NUMBER assessment."
-    add_html_section "$OUTPUT_FILE" "Permission Assessment" "<p class='red'>Insufficient permissions detected. Only $permissions_percentage% of required permissions are available.</p><p>Without these permissions, the assessment will be incomplete and may not accurately reflect your PCI DSS compliance status.</p>" "fail"
-    read -p "Continue with limited assessment? (y/n): " CONTINUE
-    if [[ ! $CONTINUE =~ ^[Yy]$ ]]; then
-        echo "Assessment aborted."
-        exit 1
-    fi
-else
-    print_status "PASS" "Permission check complete: $permissions_percentage% permissions available"
-    add_html_section "$OUTPUT_FILE" "Permission Assessment" "<p class='green'>Sufficient permissions detected. $permissions_percentage% of required permissions are available.</p>" "pass"
-fi
-
-# Reset counters for actual compliance checks
-total_checks=0
-passed_checks=0
-warning_checks=0
-failed_checks=0
-
-#----------------------------------------------------------------------
-# SECTION 2: REQUIREMENT 6 ASSESSMENT LOGIC
-#----------------------------------------------------------------------
-print_status "INFO" "=== PCI REQUIREMENT $REQUIREMENT_NUMBER: DEVELOP AND MAINTAIN SECURE SYSTEMS ==="
-
-# Requirement 6.2: Bespoke and custom software are developed securely
-add_html_section "$OUTPUT_FILE" "Requirement 6.2: Secure software development" "<p>Verifying secure development practices and CI/CD security...</p>" "info"
-
-# Check 6.2.1 - Secure development practices
-print_status "INFO" "Checking secure development practices..."
-dev_details=$(check_secure_development)
-if [[ "$dev_details" == *"class='red'"* ]] || [[ "$dev_details" == *"class='yellow'"* ]]; then
-    add_html_section "$OUTPUT_FILE" "6.2.1 - Secure software development" "$dev_details<p><strong>Remediation:</strong> Implement secure development practices using GCP security tools. Use Secret Manager for credentials, Cloud KMS for encryption, and security scanning in CI/CD pipelines.</p>" "warning"
-    ((warning_checks++))
-else
-    add_html_section "$OUTPUT_FILE" "6.2.1 - Secure software development" "$dev_details" "pass"
-    ((passed_checks++))
-fi
-((total_checks++))
-
-# Check CI/CD Pipeline Security
-print_status "INFO" "Checking Cloud Build for secure CI/CD..."
-cb_details=$(check_cloud_build_security)
-if [[ "$cb_details" == *"class='red'"* ]] || [[ "$cb_details" == *"class='yellow'"* ]]; then
-    add_html_section "$OUTPUT_FILE" "6.2.1 - CI/CD Pipeline Security" "$cb_details<p><strong>Remediation:</strong> Enhance Cloud Build with security scanning steps, approval processes, and secure handling of sensitive data. Include SAST, DAST, and dependency scanning in build pipelines.</p>" "warning"
-    ((warning_checks++))
-else
-    add_html_section "$OUTPUT_FILE" "6.2.1 - CI/CD Pipeline Security" "$cb_details" "pass"
-    ((passed_checks++))
-fi
-((total_checks++))
-
-# Requirement 6.3: Security vulnerabilities are identified and addressed
-add_html_section "$OUTPUT_FILE" "Requirement 6.3: Vulnerability management" "<p>Verifying vulnerability identification and management processes...</p>" "info"
-
-# Check container vulnerability scanning
-print_status "INFO" "Checking container security..."
-container_details=$(check_container_security)
-if [[ "$container_details" == *"class='red'"* ]] || [[ "$container_details" == *"class='yellow'"* ]]; then
-    add_html_section "$OUTPUT_FILE" "6.3.2 - Container vulnerability scanning" "$container_details<p><strong>Remediation:</strong> Enable vulnerability scanning for all container images in Artifact Registry and Container Registry. Address high and critical vulnerabilities promptly.</p>" "warning"
-    ((warning_checks++))
-else
-    add_html_section "$OUTPUT_FILE" "6.3.2 - Container vulnerability scanning" "$container_details" "pass"
-    ((passed_checks++))
-fi
-((total_checks++))
-
-# Requirement 6.4: Public-facing web applications are protected against attacks
-add_html_section "$OUTPUT_FILE" "Requirement 6.4: Web application protection" "<p>Verifying protection mechanisms for public-facing web applications...</p>" "info"
-
-# Check web application protection
-print_status "INFO" "Checking web application protection..."
-web_details=$(check_web_app_protection)
-if [[ "$web_details" == *"class='red'"* ]]; then
-    add_html_section "$OUTPUT_FILE" "6.4.1-6.4.2 - Web application protection" "$web_details<p><strong>Remediation:</strong> Implement Cloud Armor security policies for all public-facing web applications. Configure protection against OWASP Top 10 vulnerabilities and enable logging.</p>" "fail"
-    ((failed_checks++))
-elif [[ "$web_details" == *"class='yellow'"* ]]; then
-    add_html_section "$OUTPUT_FILE" "6.4.1-6.4.2 - Web application protection" "$web_details<p><strong>Remediation:</strong> Enhance web application protection with Cloud Armor. Include rate limiting, geo-blocking, and comprehensive security rules.</p>" "warning"
-    ((warning_checks++))
-else
-    add_html_section "$OUTPUT_FILE" "6.4.1-6.4.2 - Web application protection" "$web_details" "pass"
-    ((passed_checks++))
-fi
-((total_checks++))
-
-# Requirement 6.5: Changes to all system components are managed securely
-add_html_section "$OUTPUT_FILE" "Requirement 6.5: Change management" "<p>Verifying secure change management processes...</p>" "info"
-
-# Check change management and environment separation
-print_status "INFO" "Checking change management and environment separation..."
-change_details=$(check_change_management)
-if [[ "$change_details" == *"class='red'"* ]] || [[ "$change_details" == *"class='yellow'"* ]]; then
-    add_html_section "$OUTPUT_FILE" "6.5.1-6.5.6 - Change management and environment separation" "$change_details<p><strong>Remediation:</strong> Implement formal change management processes with proper environment separation. Use Infrastructure as Code, version control, and approval workflows.</p>" "warning"
-    ((warning_checks++))
-else
-    add_html_section "$OUTPUT_FILE" "6.5.1-6.5.6 - Change management and environment separation" "$change_details" "pass"
-    ((passed_checks++))
-fi
-((total_checks++))
-
-# Manual verification requirements
-manual_checks="<p>Manual verification required for complete PCI DSS Requirement 6 compliance:</p>
+# Add manual verification guidance
+add_manual_verification_guidance() {
+    local manual_guidance="<h3>Manual Verification Requirements</h3>
+<p>The following items require manual verification to ensure full PCI DSS Requirement 6 compliance:</p>
 <ul>
-<li><strong>6.1:</strong> Governance and documentation of development security policies and procedures</li>
-<li><strong>6.2.2:</strong> Developer training on software security (at least annually)</li>
+<li><strong>6.1:</strong> Secure development processes and governance framework</li>
+<li><strong>6.2.1:</strong> Bespoke software developed according to PCI DSS requirements</li>
+<li><strong>6.2.2:</strong> Software components and security vulnerabilities reviewed</li>
 <li><strong>6.2.3:</strong> Code review processes before production release</li>
-<li><strong>6.2.4:</strong> Protection against common software attacks (injection, XSS, etc.)</li>
-<li><strong>6.3.1:</strong> Maintain inventory of software components and security vulnerabilities</li>
-<li><strong>6.3.3:</strong> Patch management (critical vulnerabilities within one month)</li>
-<li><strong>6.4.3:</strong> Payment page script management and integrity verification</li>
-<li><strong>6.5:</strong> Change control procedures with proper documentation and approval</li>
+<li><strong>6.2.4:</strong> Protection against common software attacks</li>
+<li><strong>6.3.1:</strong> Inventory of software components and vulnerabilities</li>
+<li><strong>6.3.3:</strong> Patch management for critical vulnerabilities</li>
+<li><strong>6.4.3:</strong> Payment page script management and integrity</li>
+<li><strong>6.5:</strong> Change control procedures with documentation</li>
 </ul>
-<p><strong>GCP Tools and Recommendations:</strong></p>
+<p><strong>GCP Best Practices:</strong></p>
 <ul>
-<li>Use Cloud Code for secure development environments</li>
-<li>Implement automated security testing in Cloud Build</li>
 <li>Use Cloud Security Scanner for web application testing</li>
-<li>Leverage Container Analysis for dependency scanning</li>
 <li>Implement Binary Authorization for deployment security</li>
 <li>Use separate GCP projects for different environments</li>
 <li>Implement IAM policies for role separation</li>
-<li>Use Deployment Manager for Infrastructure as Code</li>
 </ul>"
+    
+    add_section "manual_verification" "Manual Verification Required"
+    add_check_result "Manual Verification Required" "warning" "$manual_guidance"
+}
 
-add_html_section "$OUTPUT_FILE" "Manual Verification Requirements" "$manual_checks" "warning"
-((warning_checks++))
-((total_checks++))
+# Execute main function if script is run directly
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi
 
-#----------------------------------------------------------------------
-
-#----------------------------------------------------------------------
-# FINAL REPORT
-#----------------------------------------------------------------------
-
-# Finalize HTML report using shared library
-# Add final summary metrics
-add_summary_metrics "$OUTPUT_FILE" "$total_checks" "$passed_checks" "$failed_checks" "$warning_checks"
-
-# Finalize HTML report using shared library
-finalize_report "$OUTPUT_FILE" "${REQUIREMENT_NUMBER}"
-
-# Display final summary using shared library
-# Display final summary using shared library
-print_status "INFO" "=== ASSESSMENT SUMMARY ==="
-print_status "INFO" "Total checks: $total_checks"
-print_status "PASS" "Passed: $passed_checks"
-print_status "FAIL" "Failed: $failed_checks"
-print_status "WARN" "Warnings: $warning_checks"
-print_status "INFO" "Report has been generated: $OUTPUT_FILE"
-print_status "PASS" "=================================================================="
