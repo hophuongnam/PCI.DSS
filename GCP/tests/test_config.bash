@@ -74,6 +74,8 @@ export TEST_TEMP_DIR="/tmp/gcp_tests"
 export LIB_ROOT_DIR="$(dirname "$TEST_ROOT_DIR")/lib"
 export GCP_COMMON_LIB="$LIB_ROOT_DIR/gcp_common.sh"
 export GCP_PERMISSIONS_LIB="$LIB_ROOT_DIR/gcp_permissions.sh"
+export GCP_HTML_REPORT_LIB="$LIB_ROOT_DIR/gcp_html_report.sh"
+export GCP_SCOPE_MGMT_LIB="$LIB_ROOT_DIR/gcp_scope_mgmt.sh"
 
 # =============================================================================
 # Mock Configuration
@@ -119,9 +121,27 @@ export GCP_PERMISSIONS_TEST_FUNCTIONS=(
     "prompt_continue_limited"
 )
 
+# GCP HTML Report Library Test Configuration
+export GCP_HTML_REPORT_TEST_FUNCTIONS=(
+    "generate_html_report"
+    "create_assessment_summary"
+    "format_permission_results"
+    "add_visual_indicators"
+)
+
+# GCP Scope Management Library Test Configuration
+export GCP_SCOPE_MGMT_TEST_FUNCTIONS=(
+    "setup_scope_management"
+    "validate_organization_scope"
+    "aggregate_project_results"
+    "manage_assessment_scope"
+)
+
 # Expected Function Counts for Validation
 export EXPECTED_GCP_COMMON_FUNCTION_COUNT=11
 export EXPECTED_GCP_PERMISSIONS_FUNCTION_COUNT=5
+export EXPECTED_GCP_HTML_REPORT_FUNCTION_COUNT=4
+export EXPECTED_GCP_SCOPE_MGMT_FUNCTION_COUNT=4
 
 # =============================================================================
 # Test Data Configuration
@@ -172,14 +192,20 @@ export REQUIRE_EDGE_CASE_TESTS="true"
 # =============================================================================
 
 # Performance Benchmarks
-export BENCHMARK_FUNCTION_EXECUTION="false"
+export BENCHMARK_FUNCTION_EXECUTION="true"
 export MAX_FUNCTION_EXECUTION_TIME_MS=1000
-export MAX_LIBRARY_LOAD_TIME_MS=500
-export MEMORY_USAGE_TRACKING="false"
+export MAX_LIBRARY_LOAD_TIME_MS=50  # 0.050s for 4-library loading
+export MEMORY_USAGE_TRACKING="true"
 
-# Performance Thresholds
-export PERFORMANCE_REGRESSION_THRESHOLD=10  # 10% performance degradation threshold
-export MEMORY_LEAK_DETECTION="false"
+# Sprint S01 Performance Baseline
+export BASELINE_LIBRARY_LOAD_TIME=0.012  # Sprint S01 baseline: 0.012s
+export PERFORMANCE_THRESHOLD_PERCENTAGE=5  # <5% overhead requirement
+export BASELINE_MEMORY_USAGE=1024  # KB baseline memory usage
+
+# Performance Thresholds  
+export PERFORMANCE_REGRESSION_THRESHOLD=5  # 5% performance degradation threshold
+export MEMORY_LEAK_DETECTION="true"
+export CONCURRENT_USAGE_TEST_COUNT=3  # Number of parallel executions for concurrent testing
 
 # =============================================================================
 # Reporting Configuration
@@ -265,7 +291,7 @@ validate_test_config() {
     done
     
     # Check library files
-    for lib in "$GCP_COMMON_LIB" "$GCP_PERMISSIONS_LIB"; do
+    for lib in "$GCP_COMMON_LIB" "$GCP_PERMISSIONS_LIB" "$GCP_HTML_REPORT_LIB" "$GCP_SCOPE_MGMT_LIB"; do
         if [[ ! -f "$lib" ]]; then
             echo "ERROR: Required library file not found: $lib" >&2
             ((errors++))

@@ -51,17 +51,21 @@ export GCP_HTML_REPORT_LOADED="true"
 # =============================================================================
 
 # HTML color constants (AWS-compatible)
-readonly HTML_PASS_COLOR="#4CAF50"     # Green
-readonly HTML_FAIL_COLOR="#f44336"     # Red  
-readonly HTML_WARN_COLOR="#ff9800"     # Orange
-readonly HTML_INFO_COLOR="#2196F3"     # Blue
-readonly HTML_NEUTRAL_COLOR="#757575"  # Gray
+if [[ -z "$HTML_PASS_COLOR" ]]; then
+    readonly HTML_PASS_COLOR="#4CAF50"     # Green
+    readonly HTML_FAIL_COLOR="#f44336"     # Red  
+    readonly HTML_WARN_COLOR="#ff9800"     # Orange
+    readonly HTML_INFO_COLOR="#2196F3"     # Blue
+    readonly HTML_NEUTRAL_COLOR="#757575"  # Gray
+fi
 
 # GCP Brand colors for accents
-readonly GCP_BLUE="#4285f4"
-readonly GCP_GREEN="#34a853"
-readonly GCP_YELLOW="#fbbc04"
-readonly GCP_RED="#ea4335"
+if [[ -z "$GCP_BLUE" ]]; then
+    readonly GCP_BLUE="#4285f4"
+    readonly GCP_GREEN="#34a853"
+    readonly GCP_YELLOW="#fbbc04"
+    readonly GCP_RED="#ea4335"
+fi
 
 # =============================================================================
 # Helper Functions

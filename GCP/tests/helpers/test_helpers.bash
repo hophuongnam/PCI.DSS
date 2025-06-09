@@ -48,7 +48,8 @@ setup_test_environment() {
     unset PROJECT_ID ORG_ID SCOPE SCOPE_TYPE VERBOSE REPORT_ONLY LOG_FILE
     unset REQUIRED_PERMISSIONS OPTIONAL_PERMISSIONS PERMISSION_RESULTS
     unset PERMISSION_COVERAGE_PERCENTAGE MISSING_PERMISSIONS_COUNT AVAILABLE_PERMISSIONS_COUNT
-    unset GCP_COMMON_LOADED GCP_PERMISSIONS_LOADED
+    unset GCP_COMMON_LOADED GCP_PERMISSIONS_LOADED GCP_HTML_REPORT_LOADED GCP_SCOPE_MGMT_LOADED
+    unset SCOPE_CONFIGURED PERMISSIONS_REGISTERED LOADED_LIBRARIES LIB_LOAD_ORDER
     
     # Initialize arrays
     declare -g -a REQUIRED_PERMISSIONS
@@ -83,7 +84,8 @@ cleanup_test_environment() {
     unset PROJECT_ID ORG_ID SCOPE SCOPE_TYPE VERBOSE REPORT_ONLY LOG_FILE
     unset REQUIRED_PERMISSIONS OPTIONAL_PERMISSIONS PERMISSION_RESULTS
     unset PERMISSION_COVERAGE_PERCENTAGE MISSING_PERMISSIONS_COUNT AVAILABLE_PERMISSIONS_COUNT
-    unset GCP_COMMON_LOADED GCP_PERMISSIONS_LOADED
+    unset GCP_COMMON_LOADED GCP_PERMISSIONS_LOADED GCP_HTML_REPORT_LOADED GCP_SCOPE_MGMT_LOADED
+    unset SCOPE_CONFIGURED PERMISSIONS_REGISTERED LOADED_LIBRARIES LIB_LOAD_ORDER
     
     # Clear function mocks
     unset -f gcloud jq curl
@@ -118,6 +120,46 @@ load_gcp_permissions_library() {
         echo "Error: gcp_permissions.sh not found in $TEST_LIB_DIR" >&2
         return 1
     fi
+}
+
+# Load gcp_html_report.sh library for testing
+load_gcp_html_report_library() {
+    if [[ "$GCP_COMMON_LOADED" != "true" ]]; then
+        echo "Error: gcp_common.sh must be loaded before gcp_html_report.sh" >&2
+        return 1
+    fi
+    
+    if [[ -f "$TEST_LIB_DIR/gcp_html_report.sh" ]]; then
+        source "$TEST_LIB_DIR/gcp_html_report.sh"
+        export GCP_HTML_REPORT_LOADED="true"
+    else
+        echo "Error: gcp_html_report.sh not found in $TEST_LIB_DIR" >&2
+        return 1
+    fi
+}
+
+# Load gcp_scope_mgmt.sh library for testing
+load_gcp_scope_mgmt_library() {
+    if [[ "$GCP_COMMON_LOADED" != "true" ]]; then
+        echo "Error: gcp_common.sh must be loaded before gcp_scope_mgmt.sh" >&2
+        return 1
+    fi
+    
+    if [[ -f "$TEST_LIB_DIR/gcp_scope_mgmt.sh" ]]; then
+        source "$TEST_LIB_DIR/gcp_scope_mgmt.sh"
+        export GCP_SCOPE_MGMT_LOADED="true"
+    else
+        echo "Error: gcp_scope_mgmt.sh not found in $TEST_LIB_DIR" >&2
+        return 1
+    fi
+}
+
+# Load all 4 GCP libraries in dependency order
+load_all_gcp_libraries() {
+    load_gcp_common_library
+    load_gcp_permissions_library
+    load_gcp_html_report_library
+    load_gcp_scope_mgmt_library
 }
 
 # Create mock library directory for testing
@@ -434,9 +476,140 @@ generate_sample_compute_instances() {
 EOF
 }
 
+# =============================================================================
+# Integration Test Environment Setup
+# =============================================================================
+
+# Setup integration test environment
+setup_integration_environment() {
+    # Create integration-specific directories
+    export INTEGRATION_TEST_DIR="$TEST_TMPDIR/integration"
+    export INTEGRATION_MOCK_DIR="$INTEGRATION_TEST_DIR/mocks"
+    export INTEGRATION_REPORT_DIR="$INTEGRATION_TEST_DIR/reports"
+    
+    mkdir -p "$INTEGRATION_TEST_DIR" "$INTEGRATION_MOCK_DIR" "$INTEGRATION_REPORT_DIR"
+    
+    # Initialize integration-specific variables
+    export ORGANIZATION_ID=""
+    export PROJECTS_LIST=()
+    export INTEGRATION_LOG_FILE="$INTEGRATION_TEST_DIR/integration.log"
+    
+    # Create integration log file
+    touch "$INTEGRATION_LOG_FILE"
+}
+
+# =============================================================================
+# Performance Testing Helper Functions
+# =============================================================================
+
+# Time function execution with high precision
+time_function() {
+    local func_name="$1"
+    local -n results_ref="$2"
+    shift 2
+    local args=("$@")
+    
+    local start_time end_time execution_time
+    start_time=$(date +%s.%N)
+    "$func_name" "${args[@]}" >/dev/null 2>&1 || true
+    end_time=$(date +%s.%N)
+    execution_time=$(echo "$end_time - $start_time" | bc)
+    
+    results_ref["$func_name"]="$execution_time"
+}
+
+# Assert performance threshold
+assert_performance_threshold() {
+    local actual_time="$1"
+    local threshold="$2"
+    local time_ok
+    time_ok=$(echo "$actual_time < $threshold" | bc)
+    [ "$time_ok" -eq 1 ]
+}
+
+# Get current memory usage in KB
+get_current_memory_usage() {
+    ps -o rss= -p $$ 2>/dev/null | tr -d ' ' || echo "1024"
+}
+
+# =============================================================================
+# Mock Functions for Integration Testing
+# =============================================================================
+
+# Mock functions for scope management (these would be implemented in gcp_scope_mgmt.sh)
+setup_scope_management() {
+    local scope_type="$1"
+    local scope_id="$2"
+    
+    export SCOPE_TYPE="$scope_type"
+    export SCOPE_ID="$scope_id"
+    export SCOPE_CONFIGURED="true"
+    
+    echo "Scope management setup: $scope_type/$scope_id"
+    return 0
+}
+
+validate_organization_scope_permissions() {
+    echo "Organization scope validation completed"
+    return 0
+}
+
+aggregate_project_results() {
+    echo "Project results aggregated"
+    return 0
+}
+
+manage_assessment_scope() {
+    echo "Assessment scope managed"
+    return 0
+}
+
+# Mock functions for HTML report generation (these would be implemented in gcp_html_report.sh)
+generate_html_report() {
+    local report_file="${REPORT_DIR:-$TEST_TMPDIR}/assessment_report.html"
+    echo "<html><body>Test Assessment Report</body></html>" > "$report_file"
+    echo "HTML report generated: $report_file"
+    return 0
+}
+
+create_assessment_summary() {
+    echo "Assessment summary created"
+    return 0
+}
+
+format_permission_results() {
+    echo "Permission results formatted"
+    return 0
+}
+
+add_visual_indicators() {
+    echo "Visual indicators added"
+    return 0
+}
+
+# Extended mock functions for organization testing
+check_all_permissions_across_projects() {
+    echo "Permissions checked across all projects"
+    return 0
+}
+
+generate_organization_html_report() {
+    local report_file="${REPORT_DIR:-$TEST_TMPDIR}/organization_assessment_report.html"
+    echo "<html><body>Organization Assessment Report</body></html>" > "$report_file"
+    echo "Organization HTML report generated: $report_file"
+    return 0
+}
+
+check_all_permissions_for_project() {
+    local project_id="$1"
+    echo "Permissions checked for project: $project_id"
+    return 0
+}
+
 # Export all functions for use in tests
-export -f setup_test_environment cleanup_test_environment
-export -f load_gcp_common_library load_gcp_permissions_library create_mock_lib_directory
+export -f setup_test_environment cleanup_test_environment setup_integration_environment
+export -f load_gcp_common_library load_gcp_permissions_library load_gcp_html_report_library load_gcp_scope_mgmt_library load_all_gcp_libraries
+export -f create_mock_lib_directory
 export -f create_test_project_data create_test_organization_data create_test_permissions_data
 export -f assert_file_exists assert_directory_exists assert_variable_set assert_variable_equals
 export -f assert_output_contains assert_output_not_contains assert_status_equals
@@ -444,3 +617,7 @@ export -f assert_array_length assert_array_contains
 export -f generate_test_id create_test_file wait_for_condition log_test_message
 export -f get_test_duration mark_test_start
 export -f generate_sample_projects generate_sample_iam_roles generate_sample_compute_instances
+export -f time_function assert_performance_threshold get_current_memory_usage
+export -f setup_scope_management validate_organization_scope_permissions aggregate_project_results manage_assessment_scope
+export -f generate_html_report create_assessment_summary format_permission_results add_visual_indicators
+export -f check_all_permissions_across_projects generate_organization_html_report check_all_permissions_for_project
