@@ -612,9 +612,11 @@ add_summary_metrics() {
                     </tr>"
     fi
     
-    # Generate summary metrics HTML
-    local summary_html="        <div class=\"summary-box\">
-            <h2 style=\"margin-top: 0;\">Assessment Summary</h2>
+    # Generate summary metrics HTML as a standalone section (not collapsible)
+    local summary_html="
+        
+        <div class=\"summary-section\" style=\"margin: 20px 0; padding: 20px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid $compliance_color;\">
+            <h2 style=\"margin-top: 0; color: #333;\">📊 Assessment Summary</h2>
             
             <table class=\"summary-table\">
                 <tr>
@@ -676,10 +678,8 @@ finalize_report() {
     # Get current timestamp
     local finalization_time=$(date)
     
-    # Close any remaining open sections and report content
-    local finalization_html="            </div> <!-- Close final section content -->
-        </div> <!-- Close final section -->
-        </div> <!-- Close report-content -->
+    # Close report content (sections already closed by summary)
+    local finalization_html="        </div> <!-- Close report-content -->
         
         <div class=\"timestamp\">
             <p><strong>Report Generated:</strong> $finalization_time</p>

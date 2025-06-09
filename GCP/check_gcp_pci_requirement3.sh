@@ -70,7 +70,7 @@ else
 fi
 
 # Initialize HTML report
-initialize_html_report "$OUTPUT_FILE" "$REPORT_TITLE"
+initialize_report "$OUTPUT_FILE" "$REPORT_TITLE"
 
 echo ""
 echo "Starting assessment at $(date)"
@@ -85,7 +85,7 @@ failed_checks=0
 #----------------------------------------------------------------------
 # SECTION 2: DETERMINE RESOURCES TO CHECK
 #----------------------------------------------------------------------
-add_html_section "$OUTPUT_FILE" "Target Resources" "<p>Identifying target resources for assessment...</p>" "info"
+add_section "$OUTPUT_FILE" "Target Resources" "<p>Identifying target resources for assessment...</p>" "info"
 
 print_status "INFO" "=== IDENTIFYING TARGET RESOURCES ==="
 
@@ -98,7 +98,7 @@ declare -a KMS_KEYRINGS=()
 # Retrieve resources based on user input and scope
 if [ "$TARGET_RESOURCES" == "all" ] || [[ "$TARGET_RESOURCES" == *"sql"* ]]; then
     print_status "INFO" "Retrieving Cloud SQL instances..."
-    SQL_INSTANCE_LIST=$(run_gcp_command_across_projects "gcloud sql instances list" "--format=value(name)")
+    SQL_INSTANCE_LIST=$(run_across_projects "gcloud sql instances list" "--format=value(name)")
     if [ -n "$SQL_INSTANCE_LIST" ]; then
         readarray -t SQL_INSTANCES <<< "$SQL_INSTANCE_LIST"
         print_status "PASS" "Found ${#SQL_INSTANCES[@]} Cloud SQL instances"
@@ -120,7 +120,7 @@ fi
 
 if [ "$TARGET_RESOURCES" == "all" ] || [[ "$TARGET_RESOURCES" == *"compute"* ]]; then
     print_status "INFO" "Retrieving Compute Engine instances..."
-    COMPUTE_INSTANCE_LIST=$(run_gcp_command_across_projects "gcloud compute instances list" "--format=value(name)")
+    COMPUTE_INSTANCE_LIST=$(run_across_projects "gcloud compute instances list" "--format=value(name)")
     if [ -n "$COMPUTE_INSTANCE_LIST" ]; then
         readarray -t COMPUTE_INSTANCES <<< "$COMPUTE_INSTANCE_LIST"
         print_status "PASS" "Found ${#COMPUTE_INSTANCES[@]} Compute Engine instances"
@@ -131,7 +131,7 @@ fi
 
 if [ "$TARGET_RESOURCES" == "all" ] || [[ "$TARGET_RESOURCES" == *"kms"* ]]; then
     print_status "INFO" "Retrieving Cloud KMS keyrings..."
-    KMS_KEYRING_LIST=$(run_gcp_command_across_projects "gcloud kms keyrings list --location=global" "--format=value(name)")
+    KMS_KEYRING_LIST=$(run_across_projects "gcloud kms keyrings list --location=global" "--format=value(name)")
     if [ -n "$KMS_KEYRING_LIST" ]; then
         readarray -t KMS_KEYRINGS <<< "$KMS_KEYRING_LIST"
         print_status "PASS" "Found ${#KMS_KEYRINGS[@]} Cloud KMS keyrings"
@@ -140,7 +140,7 @@ if [ "$TARGET_RESOURCES" == "all" ] || [[ "$TARGET_RESOURCES" == *"kms"* ]]; the
     fi
 fi
 
-add_html_section "$OUTPUT_FILE" "Resource Identification" "Assessment will include:<br>
+add_section "$OUTPUT_FILE" "Resource Identification" "Assessment will include:<br>
 - Cloud SQL Instances: ${#SQL_INSTANCES[@]}<br>
 - Cloud Storage Buckets: ${#STORAGE_BUCKETS[@]}<br>
 - Compute Engine Instances: ${#COMPUTE_INSTANCES[@]}<br>
@@ -151,7 +151,7 @@ add_html_section "$OUTPUT_FILE" "Resource Identification" "Assessment will inclu
 #----------------------------------------------------------------------
 print_status "INFO" "=== PCI REQUIREMENT 3.2: STORAGE OF ACCOUNT DATA ===" 
 
-add_html_section "$OUTPUT_FILE" "Requirement 3.2: Storage of account data is kept to a minimum" "<p>Analyzing data retention and lifecycle policies...</p>" "info"
+add_section "$OUTPUT_FILE" "Requirement 3.2: Storage of account data is kept to a minimum" "<p>Analyzing data retention and lifecycle policies...</p>" "info"
 
 # Check for Cloud Storage lifecycle policies
 print_status "INFO" "3.2.1 - Cloud Storage lifecycle policies"
@@ -179,7 +179,7 @@ done
 
 if [ $storage_with_lifecycle -gt 0 ]; then
     if [ $storage_without_lifecycle -eq 0 ]; then
-        add_html_section "$OUTPUT_FILE" "3.2.1 - Cloud Storage Lifecycle Policies" "<p class='green'>All Cloud Storage buckets have lifecycle policies configured ($storage_with_lifecycle of ${#STORAGE_BUCKETS[@]}).</p>" "pass"
+        add_section "$OUTPUT_FILE" "3.2.1 - Cloud Storage Lifecycle Policies" "<p class='green'>All Cloud Storage buckets have lifecycle policies configured ($storage_with_lifecycle of ${#STORAGE_BUCKETS[@]}).</p>" "pass"
         ((total_checks++))
         ((passed_checks++))
     else
@@ -193,13 +193,13 @@ if [ $storage_with_lifecycle -gt 0 ]; then
         done
         bucket_details+="</ul><p>Lifecycle policies are essential for ensuring that data is retained only as long as necessary for business purposes, in accordance with PCI DSS requirement 3.2.1.</p>"
         
-        add_html_section "$OUTPUT_FILE" "3.2.1 - Cloud Storage Lifecycle Policies" "$bucket_details<p class='yellow'>Configure lifecycle policies for all Cloud Storage buckets that may contain account data to ensure data is retained only as long as necessary and to automatically enforce retention policies.</p>" "warning"
+        add_section "$OUTPUT_FILE" "3.2.1 - Cloud Storage Lifecycle Policies" "$bucket_details<p class='yellow'>Configure lifecycle policies for all Cloud Storage buckets that may contain account data to ensure data is retained only as long as necessary and to automatically enforce retention policies.</p>" "warning"
         ((total_checks++))
         ((warning_checks++))
     fi
 else
     if [ ${#STORAGE_BUCKETS[@]} -gt 0 ]; then
-        add_html_section "$OUTPUT_FILE" "3.2.1 - Cloud Storage Lifecycle Policies" "<p class='yellow'>No Cloud Storage buckets were found to have lifecycle policies configured.</p><p>Configure lifecycle policies for all Cloud Storage buckets that may contain account data to ensure data is retained only as long as necessary.</p>" "warning"
+        add_section "$OUTPUT_FILE" "3.2.1 - Cloud Storage Lifecycle Policies" "<p class='yellow'>No Cloud Storage buckets were found to have lifecycle policies configured.</p><p>Configure lifecycle policies for all Cloud Storage buckets that may contain account data to ensure data is retained only as long as necessary.</p>" "warning"
         ((total_checks++))
         ((warning_checks++))
     fi
@@ -210,7 +210,7 @@ fi
 #----------------------------------------------------------------------
 print_status "INFO" "=== PCI REQUIREMENT 3.3: DATABASE LOGGING CHECKS ==="
 
-add_html_section "$OUTPUT_FILE" "Requirement 3.3: Database logging configuration checks" "<p>Analyzing database logging configurations for sensitive data exposure...</p>" "info"
+add_section "$OUTPUT_FILE" "Requirement 3.3: Database logging configuration checks" "<p>Analyzing database logging configurations for sensitive data exposure...</p>" "info"
 
 # Check for Cloud SQL database logging configurations
 if [ ${#SQL_INSTANCES[@]} -gt 0 ]; then
@@ -240,7 +240,7 @@ if [ ${#SQL_INSTANCES[@]} -gt 0 ]; then
             if [[ "$FLAGS" == *"general_log"* ]]; then
                 GENERAL_LOG_VALUE=$(echo "$FLAGS" | grep -A5 '"name": "general_log"' | grep -o '"value": "[^"]*' | cut -d'"' -f4)
                 if [[ "$GENERAL_LOG_VALUE" == "on" || "$GENERAL_LOG_VALUE" == "1" ]]; then
-                    add_html_section "$OUTPUT_FILE" "3.3.1 - Database Logging Settings" "<p class='red'>The Cloud SQL instance $instance_name has general query logging enabled, which might capture sensitive data.</p><p>Disable general query logging or ensure it doesn't capture sensitive data. Review query logs to confirm they don't contain sensitive data.</p>" "warning"
+                    add_section "$OUTPUT_FILE" "3.3.1 - Database Logging Settings" "<p class='red'>The Cloud SQL instance $instance_name has general query logging enabled, which might capture sensitive data.</p><p>Disable general query logging or ensure it doesn't capture sensitive data. Review query logs to confirm they don't contain sensitive data.</p>" "warning"
                     ((total_checks++))
                     ((warning_checks++))
                 fi
@@ -251,7 +251,7 @@ if [ ${#SQL_INSTANCES[@]} -gt 0 ]; then
                 if [[ "$FLAGS" == *"log_statement"* ]]; then
                     LOG_STATEMENT_VALUE=$(echo "$FLAGS" | grep -A5 '"name": "log_statement"' | grep -o '"value": "[^"]*' | cut -d'"' -f4)
                     if [[ "$LOG_STATEMENT_VALUE" == "all" ]]; then
-                        add_html_section "$OUTPUT_FILE" "3.3.1 - PostgreSQL Logging Settings" "<p class='red'>The Cloud SQL instance $instance_name has log_statement set to 'all', which logs all SQL statements and might capture sensitive data.</p><p>Change log_statement setting to avoid logging sensitive data or ensure logs are properly protected.</p>" "warning"
+                        add_section "$OUTPUT_FILE" "3.3.1 - PostgreSQL Logging Settings" "<p class='red'>The Cloud SQL instance $instance_name has log_statement set to 'all', which logs all SQL statements and might capture sensitive data.</p><p>Change log_statement setting to avoid logging sensitive data or ensure logs are properly protected.</p>" "warning"
                         ((total_checks++))
                         ((warning_checks++))
                     fi
@@ -260,7 +260,7 @@ if [ ${#SQL_INSTANCES[@]} -gt 0 ]; then
         fi
     done
 else
-    add_html_section "$OUTPUT_FILE" "3.3.1 - Database Logging Check" "<p>No Cloud SQL instances found to check for logging settings.</p>" "info"
+    add_section "$OUTPUT_FILE" "3.3.1 - Database Logging Check" "<p>No Cloud SQL instances found to check for logging settings.</p>" "info"
     ((total_checks++))
 fi
 
@@ -269,7 +269,7 @@ fi
 #----------------------------------------------------------------------
 print_status "INFO" "=== PCI REQUIREMENT 3.5: PAN SECURITY ==="
 
-add_html_section "$OUTPUT_FILE" "Requirement 3.5: Primary account number (PAN) is secured wherever it is stored" "<p>Analyzing encryption and security controls for PAN protection...</p>" "info"
+add_section "$OUTPUT_FILE" "Requirement 3.5: Primary account number (PAN) is secured wherever it is stored" "<p>Analyzing encryption and security controls for PAN protection...</p>" "info"
 
 # Check for Cloud KMS key usage
 print_status "INFO" "3.5.1 - Cloud KMS encryption key availability"
@@ -333,10 +333,10 @@ if [ ${#KMS_KEYS_LIST[@]} -gt 0 ]; then
     key_details+="<li>Signing keys: $SIGNING_KEYS</li>"
     key_details+="</ul><p>These keys could be used for encryption of sensitive data. Manual verification is needed to ensure they are properly used for PAN encryption.</p>"
     
-    add_html_section "$OUTPUT_FILE" "3.5.1 - Cloud KMS Key Availability" "$key_details" "info"
+    add_section "$OUTPUT_FILE" "3.5.1 - Cloud KMS Key Availability" "$key_details" "info"
     ((total_checks++))
 else
-    add_html_section "$OUTPUT_FILE" "3.5.1 - Cloud KMS Key Availability" "<p class='yellow'>No Cloud KMS keys were found. If storing PAN, ensure proper encryption methods are used.</p><p>Create and use Cloud KMS keys to encrypt sensitive data if storing PAN in GCP services.</p>" "warning"
+    add_section "$OUTPUT_FILE" "3.5.1 - Cloud KMS Key Availability" "<p class='yellow'>No Cloud KMS keys were found. If storing PAN, ensure proper encryption methods are used.</p><p>Create and use Cloud KMS keys to encrypt sensitive data if storing PAN in GCP services.</p>" "warning"
     ((total_checks++))
     ((warning_checks++))
 fi
@@ -385,11 +385,11 @@ done
 
 if [ $TOTAL_DISKS -gt 0 ]; then
     if [ $ENCRYPTED_DISKS -eq $TOTAL_DISKS ]; then
-        add_html_section "$OUTPUT_FILE" "3.5.1 - Compute Engine Disk Encryption" "<p class='green'>All Compute Engine disks ($ENCRYPTED_DISKS of $TOTAL_DISKS) are encrypted. Note: GCP encrypts all disks by default with Google-managed keys.</p>" "pass"
+        add_section "$OUTPUT_FILE" "3.5.1 - Compute Engine Disk Encryption" "<p class='green'>All Compute Engine disks ($ENCRYPTED_DISKS of $TOTAL_DISKS) are encrypted. Note: GCP encrypts all disks by default with Google-managed keys.</p>" "pass"
         ((total_checks++))
         ((passed_checks++))
     else
-        add_html_section "$OUTPUT_FILE" "3.5.1 - Compute Engine Disk Encryption" "<p class='yellow'>$UNENCRYPTED_DISKS of $TOTAL_DISKS disks may not have customer-managed encryption. GCP encrypts all disks by default with Google-managed keys, but consider using customer-managed keys for PAN data.</p>" "warning"
+        add_section "$OUTPUT_FILE" "3.5.1 - Compute Engine Disk Encryption" "<p class='yellow'>$UNENCRYPTED_DISKS of $TOTAL_DISKS disks may not have customer-managed encryption. GCP encrypts all disks by default with Google-managed keys, but consider using customer-managed keys for PAN data.</p>" "warning"
         ((total_checks++))
         ((warning_checks++))
     fi
@@ -427,7 +427,7 @@ done
 
 if [ ${#SQL_INSTANCES[@]} -gt 0 ]; then
     if [ $ENCRYPTED_SQL -eq ${#SQL_INSTANCES[@]} ]; then
-        add_html_section "$OUTPUT_FILE" "3.5.1 - Cloud SQL Encryption" "<p class='green'>All Cloud SQL instances ($ENCRYPTED_SQL of ${#SQL_INSTANCES[@]}) are encrypted. Note: GCP encrypts all Cloud SQL instances by default with Google-managed keys.</p>" "pass"
+        add_section "$OUTPUT_FILE" "3.5.1 - Cloud SQL Encryption" "<p class='green'>All Cloud SQL instances ($ENCRYPTED_SQL of ${#SQL_INSTANCES[@]}) are encrypted. Note: GCP encrypts all Cloud SQL instances by default with Google-managed keys.</p>" "pass"
         ((total_checks++))
         ((passed_checks++))
     else
@@ -452,7 +452,7 @@ if [ ${#SQL_INSTANCES[@]} -gt 0 ]; then
         done
         sql_details+="</ul><p>GCP encrypts all Cloud SQL instances by default with Google-managed keys, but consider using customer-managed keys for PAN data to comply with PCI DSS requirement 3.5.1.</p>"
         
-        add_html_section "$OUTPUT_FILE" "3.5.1 - Cloud SQL Encryption" "$sql_details" "warning"
+        add_section "$OUTPUT_FILE" "3.5.1 - Cloud SQL Encryption" "$sql_details" "warning"
         ((total_checks++))
         ((warning_checks++))
     fi
@@ -463,7 +463,7 @@ fi
 #----------------------------------------------------------------------
 print_status "INFO" "=== PCI REQUIREMENT 3.6: CRYPTOGRAPHIC KEY SECURITY ==="
 
-add_html_section "$OUTPUT_FILE" "Requirement 3.6: Cryptographic keys used to protect stored account data are secured" "<p>Analyzing cryptographic key protection mechanisms...</p>" "info"
+add_section "$OUTPUT_FILE" "Requirement 3.6: Cryptographic keys used to protect stored account data are secured" "<p>Analyzing cryptographic key protection mechanisms...</p>" "info"
 
 # Check Cloud KMS key policies and IAM
 print_status "INFO" "3.6.1 - Cloud KMS key protection procedures"
@@ -523,17 +523,17 @@ if [ ${#KMS_KEYS_LIST[@]} -gt 0 ]; then
     key_protection_details+="<li>Overall: $secure_keys of ${#KMS_KEYS_LIST[@]} keys have secure access policies</li>"
     
     if [ $potentially_insecure_keys -eq 0 ]; then
-        add_html_section "$OUTPUT_FILE" "3.6.1 - Key Protection Procedures" "<p class='green'>Cloud KMS keys appear to have secure access controls and protection mechanisms in place.</p>$key_protection_details</ul><p>While automated evidence is positive, verify through documentation that comprehensive key management procedures exist and include restriction of access to the fewest custodians necessary, key-encrypting keys at least as strong as data-encrypting keys, secure storage of keys in the fewest possible locations, and separation of key-encrypting keys from data-encrypting keys. Cloud KMS handles many of these requirements automatically by design.</p>" "pass"
+        add_section "$OUTPUT_FILE" "3.6.1 - Key Protection Procedures" "<p class='green'>Cloud KMS keys appear to have secure access controls and protection mechanisms in place.</p>$key_protection_details</ul><p>While automated evidence is positive, verify through documentation that comprehensive key management procedures exist and include restriction of access to the fewest custodians necessary, key-encrypting keys at least as strong as data-encrypting keys, secure storage of keys in the fewest possible locations, and separation of key-encrypting keys from data-encrypting keys. Cloud KMS handles many of these requirements automatically by design.</p>" "pass"
         ((total_checks++))
         ((passed_checks++))
     else
-        add_html_section "$OUTPUT_FILE" "3.6.1 - Key Protection Procedures" "<p class='yellow'>Some Cloud KMS keys may have security issues with access controls.</p>$key_protection_details</ul><p>Implement comprehensive procedures to protect cryptographic keys against disclosure and misuse, including: restricting access to the fewest custodians necessary, ensuring key-encrypting keys are at least as strong as data-encrypting keys, storing key-encrypting keys separately from data-encrypting keys, and storing keys securely in the fewest possible locations.</p>" "warning"
+        add_section "$OUTPUT_FILE" "3.6.1 - Key Protection Procedures" "<p class='yellow'>Some Cloud KMS keys may have security issues with access controls.</p>$key_protection_details</ul><p>Implement comprehensive procedures to protect cryptographic keys against disclosure and misuse, including: restricting access to the fewest custodians necessary, ensuring key-encrypting keys are at least as strong as data-encrypting keys, storing key-encrypting keys separately from data-encrypting keys, and storing keys securely in the fewest possible locations.</p>" "warning"
         ((total_checks++))
         ((warning_checks++))
     fi
 else
     key_protection_details+="<li>No Cloud KMS keys found for analysis</li></ul>"
-    add_html_section "$OUTPUT_FILE" "3.6.1 - Key Protection Procedures" "<p class='yellow'>No Cloud KMS keys found for key protection analysis.</p>$key_protection_details<p>If using cryptographic keys to protect stored account data, implement Cloud KMS with appropriate key management procedures.</p>" "warning"
+    add_section "$OUTPUT_FILE" "3.6.1 - Key Protection Procedures" "<p class='yellow'>No Cloud KMS keys found for key protection analysis.</p>$key_protection_details<p>If using cryptographic keys to protect stored account data, implement Cloud KMS with appropriate key management procedures.</p>" "warning"
     ((total_checks++))
     ((warning_checks++))
 fi
@@ -543,7 +543,7 @@ fi
 #----------------------------------------------------------------------
 print_status "INFO" "=== PCI REQUIREMENT 3.7: KEY MANAGEMENT ==="
 
-add_html_section "$OUTPUT_FILE" "Requirement 3.7: Where cryptography is used to protect stored account data, key management processes and procedures covering all aspects of the key lifecycle are defined and implemented" "<p>Analyzing key management lifecycle procedures...</p>" "info"
+add_section "$OUTPUT_FILE" "Requirement 3.7: Where cryptography is used to protect stored account data, key management processes and procedures covering all aspects of the key lifecycle are defined and implemented" "<p>Analyzing key management lifecycle procedures...</p>" "info"
 
 # Check Cloud KMS key generation capabilities
 print_status "INFO" "3.7.1 - Strong key generation"
@@ -591,18 +591,18 @@ if [ ${#KMS_KEYS_LIST[@]} -gt 0 ]; then
         <li>Cryptographically secure random number generation</li>
     </ul>"
     
-    add_html_section "$OUTPUT_FILE" "3.7.1 - Strong Key Generation" "<p class='green'>Cloud KMS provides secure key generation capabilities with hardware-backed key generation.</p>$key_generation_details<p>While automated evidence is positive, verify through documentation that key-management policies and procedures specifically address the generation of strong cryptographic keys and compliance with industry standards.</p>" "pass"
+    add_section "$OUTPUT_FILE" "3.7.1 - Strong Key Generation" "<p class='green'>Cloud KMS provides secure key generation capabilities with hardware-backed key generation.</p>$key_generation_details<p>While automated evidence is positive, verify through documentation that key-management policies and procedures specifically address the generation of strong cryptographic keys and compliance with industry standards.</p>" "pass"
     ((total_checks++))
     ((passed_checks++))
 else
     key_generation_details+="<p>No Cloud KMS keys found to analyze key generation capabilities.</p>"
-    add_html_section "$OUTPUT_FILE" "3.7.1 - Strong Key Generation" "$key_generation_details<p>Implement key-management policies and procedures that address the generation of strong cryptographic keys. Consider using Cloud KMS for hardware-backed key generation.</p>" "warning"
+    add_section "$OUTPUT_FILE" "3.7.1 - Strong Key Generation" "$key_generation_details<p>Implement key-management policies and procedures that address the generation of strong cryptographic keys. Consider using Cloud KMS for hardware-backed key generation.</p>" "warning"
     ((total_checks++))
     ((warning_checks++))
 fi
 
 # Requirement 3.7.2 - Key Distribution
-add_html_section "$OUTPUT_FILE" "3.7.2 - Secure Key Distribution" "<p>Automated assessment provides limited evidence of cryptographic key distribution practices.</p>
+add_section "$OUTPUT_FILE" "3.7.2 - Secure Key Distribution" "<p>Automated assessment provides limited evidence of cryptographic key distribution practices.</p>
 <p>GCP provides secure key distribution mechanisms through TLS-encrypted API calls, IAM role-based access control, VPC Private Google Access for private network paths to Cloud KMS, and Cloud HSM integration for hardware-based key management.</p>
 <p>Manual verification is required to confirm formal key distribution procedures.</p>
 <p>Implement key-management policies and procedures that address secure distribution of cryptographic keys. Configure secure channels for key distribution and ensure methods maintain the integrity and confidentiality of keys.</p>" "warning"
@@ -610,7 +610,7 @@ add_html_section "$OUTPUT_FILE" "3.7.2 - Secure Key Distribution" "<p>Automated 
 ((warning_checks++))
 
 # Requirement 3.7.3 - Key Storage
-add_html_section "$OUTPUT_FILE" "3.7.3 - Secure Key Storage" "<p>Automated assessment provides limited evidence of cryptographic key storage practices.</p>
+add_section "$OUTPUT_FILE" "3.7.3 - Secure Key Storage" "<p>Automated assessment provides limited evidence of cryptographic key storage practices.</p>
 <p>Cloud KMS stores keys in FIPS 140-2 Level 3 validated HSMs, and master keys in Cloud KMS never leave the HSMs unencrypted. Cloud HSM provides dedicated hardware security modules for enhanced security.</p>
 <p>Manual verification is required to confirm formal key storage procedures.</p>
 <p>Implement key-management policies and procedures that address secure storage of cryptographic keys. Ensure keys are stored securely in the fewest possible locations and protected against unauthorized access.</p>" "warning"
@@ -670,7 +670,7 @@ rotation_details+="<p>With Cloud KMS key rotation:</p><ul>
     <li>Asymmetric KMS keys cannot be automatically rotated</li>
 </ul>"
 
-add_html_section "$OUTPUT_FILE" "3.7.4 - Key Cryptoperiod and Changes" "<p>Automated assessment found $rotation_status evidence of key rotation practices.</p>
+add_section "$OUTPUT_FILE" "3.7.4 - Key Cryptoperiod and Changes" "<p>Automated assessment found $rotation_status evidence of key rotation practices.</p>
 $rotation_details
 <p>Manual verification is required to confirm whether cryptoperiods are defined for each key type and whether procedures for key changes at defined intervals exist.</p>
 <p>Implement key-management policies that define cryptoperiods for each key type and include processes for key changes at the end of those periods. Enable automatic key rotation for Cloud KMS keys where supported.</p>" "warning"
@@ -678,7 +678,7 @@ $rotation_details
 ((warning_checks++))
 
 # Requirement 3.7.5 - Key Retirement
-add_html_section "$OUTPUT_FILE" "3.7.5 - Key Retirement and Replacement" "<p>Automated assessment provides limited evidence of key retirement practices.</p>
+add_section "$OUTPUT_FILE" "3.7.5 - Key Retirement and Replacement" "<p>Automated assessment provides limited evidence of key retirement practices.</p>
 <p>Cloud KMS provides key retirement capabilities through key version management and destruction schedules with customizable waiting periods.</p>
 <p>Manual verification is required to confirm whether policies for key retirement or replacement exist for various scenarios.</p>
 <p>Implement policies for key retirement or replacement when keys reach cryptoperiod end, key integrity is weakened, or key is compromised. Ensure retired keys are not used for encryption.</p>" "warning"
@@ -686,7 +686,7 @@ add_html_section "$OUTPUT_FILE" "3.7.5 - Key Retirement and Replacement" "<p>Aut
 ((warning_checks++))
 
 # Requirement 3.7.6 - Manual Key Operations
-add_html_section "$OUTPUT_FILE" "3.7.6 - Manual Key Operations" "<p>Manual verification required. Automated assessment cannot determine if manual cleartext key operations are performed or how they are managed.</p>
+add_section "$OUTPUT_FILE" "3.7.6 - Manual Key Operations" "<p>Manual verification required. Automated assessment cannot determine if manual cleartext key operations are performed or how they are managed.</p>
 <p>Cloud KMS generally handles keys in a way that prevents exposure of cleartext key material to users. However, some scenarios might involve manual key operations:</p>
 <ul>
     <li>Import of external key material into Cloud KMS</li>
@@ -698,7 +698,7 @@ add_html_section "$OUTPUT_FILE" "3.7.6 - Manual Key Operations" "<p>Manual verif
 ((warning_checks++))
 
 # Requirement 3.7.7 - Unauthorized Key Substitution
-add_html_section "$OUTPUT_FILE" "3.7.7 - Prevention of Unauthorized Key Substitution" "<p>Manual verification required. Automated assessment provides limited insight into controls preventing unauthorized key substitution.</p>
+add_section "$OUTPUT_FILE" "3.7.7 - Prevention of Unauthorized Key Substitution" "<p>Manual verification required. Automated assessment provides limited insight into controls preventing unauthorized key substitution.</p>
 <p>Cloud KMS implements several controls that can help prevent unauthorized key substitution:</p>
 <ul>
     <li>IAM policies controlling who can use specific keys</li>
@@ -716,7 +716,7 @@ print_status "INFO" "3.7.8 - Key custodian acknowledgment"
 print_status "INFO" "Checking for IAM roles that might be used for key custodians..."
 
 # Check for IAM roles that might be used for key custodians
-key_custodian_roles=$(run_gcp_command_across_projects "gcloud projects get-iam-policy" "--format=json" | grep -E "(cloudkms|crypto|key|custodian)" | wc -l)
+key_custodian_roles=$(run_across_projects "gcloud projects get-iam-policy" "--format=json" | grep -E "(cloudkms|crypto|key|custodian)" | wc -l)
 
 custodian_details=""
 if [ $key_custodian_roles -gt 0 ]; then
@@ -725,7 +725,7 @@ else
     custodian_details="<p>No IAM bindings found with names suggesting they might be used for key custodians. Manual verification is needed to identify key custodians and their acknowledgment procedures.</p>"
 fi
 
-add_html_section "$OUTPUT_FILE" "3.7.8 - Key Custodian Acknowledgment" "<p>Automated assessment provides limited evidence of key custodian acknowledgment procedures.</p>
+add_section "$OUTPUT_FILE" "3.7.8 - Key Custodian Acknowledgment" "<p>Automated assessment provides limited evidence of key custodian acknowledgment procedures.</p>
 $custodian_details
 <p>Ensure all key custodians formally acknowledge (in writing or electronically) that they understand and accept their key-custodian responsibilities. This typically involves documented roles and responsibilities, specific procedures for each custodian role, and a formal acknowledgment process.</p>" "warning"
 ((total_checks++))
@@ -767,7 +767,7 @@ summary="<p>A total of $total_checks checks were performed:</p>
     <li>Perform a follow-up assessment after remediation</li>
 </ol>"
 
-add_html_section "$OUTPUT_FILE" "Assessment Summary" "$summary" "info"
+add_section "$OUTPUT_FILE" "Assessment Summary" "$summary" "info"
 
 #----------------------------------------------------------------------
 # FINAL REPORT

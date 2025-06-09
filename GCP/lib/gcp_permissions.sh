@@ -11,19 +11,235 @@ AVAILABLE_PERMISSIONS_COUNT=0
 MISSING_ROLES_COUNT=0
 AVAILABLE_ROLES_COUNT=0
 
-# Standard GCP roles required for PCI DSS assessment
-declare -A STANDARD_PCI_ROLES=(
-    ["roles/viewer"]="Viewer"
-    ["roles/iam.securityReviewer"]="Security Reviewer"
-    ["roles/logging.viewer"]="Logging Viewer"
-    ["roles/monitoring.viewer"]="Monitoring Viewer"
-    ["roles/cloudasset.viewer"]="Cloud Asset Viewer"
-    ["roles/accesscontextmanager.policyReader"]="Access Context Manager Policy Reader"
-)
+# Standard GCP permissions required for PCI DSS assessment
+# Note: The actual permissions are defined locally in check_standard_permissions() function
 
-# Check if current user has required standard GCP roles
-check_standard_roles() {
-    print_status "INFO" "Checking standard GCP roles for PCI DSS assessment..."
+# Function to test a specific gcloud command (like AWS method)
+test_gcloud_command() {
+    local service="$1"
+    local command="$2"
+    local description="$3"
+    local additional_args="$4"
+    
+    local full_command="gcloud $service $command"
+    if [[ -n "$additional_args" ]]; then
+        full_command="$full_command $additional_args"
+    fi
+    
+    # Add common parameters for scope
+    if [[ -n "$PROJECT_ID" ]]; then
+        full_command="$full_command --project=$PROJECT_ID"
+    fi
+    
+    # Add format and limit parameters to minimize output and add timeout
+    full_command="$full_command --format=value(name) --limit=1 --verbosity=error"
+    
+    # Execute command with timeout and capture output
+    local output
+    local exit_code
+    
+    # Use timeout to prevent hanging (15 seconds max)
+    if command -v timeout >/dev/null 2>&1; then
+        output=$(timeout 15s bash -c "$full_command" 2>&1)
+        exit_code=$?
+    else
+        # Fallback if timeout command not available
+        output=$($full_command 2>&1)
+        exit_code=$?
+    fi
+    
+    # Check for timeout
+    if [[ $exit_code -eq 124 ]]; then
+        return 1  # Timeout = permission issue
+    fi
+    
+    # Check for permission-related errors (similar to AWS approach)
+    if [[ $output == *"PERMISSION_DENIED"* ]] || \
+       [[ $output == *"does not have permission"* ]] || \
+       [[ $output == *"Insufficient Permission"* ]] || \
+       [[ $output == *"Access denied"* ]] || \
+       [[ $output == *"FORBIDDEN"* ]] || \
+       [[ $exit_code -eq 1 && $output == *"permission"* ]]; then
+        return 1
+    elif [[ $output == *"not found"* ]] || \
+         [[ $output == *"No resources found"* ]] || \
+         [[ $output == *"Listed 0 items"* ]] || \
+         [[ $exit_code -eq 0 ]]; then
+        # Command succeeded or failed due to no resources (which is fine for permission testing)
+        return 0
+    else
+        # Other errors might indicate permission issues, but let's be lenient
+        return 0
+    fi
+}
+
+# Check if current user has required permissions using functional testing
+check_standard_permissions() {
+    print_status "INFO" "Testing GCP permissions for PCI DSS assessment..."
+    
+    # Declare the permissions array locally to ensure proper scoping
+    local -A standard_permissions=(
+        ["compute_instances_list"]="List Compute Instances"
+        ["compute_firewallRules_list"]="List Firewall Rules"
+        ["compute_networks_list"]="List VPC Networks"
+        ["storage_buckets_list"]="List Storage Buckets"
+        ["cloudsql_instances_list"]="List Cloud SQL Instances"
+        ["logging_sinks_list"]="List Logging Sinks"
+        ["iam_serviceAccounts_list"]="List Service Accounts"
+        ["monitoring_alertPolicies_list"]="List Monitoring Alerts"
+    )
+    
+    # Get current user email
+    local current_user
+    current_user=$(gcloud auth list --filter="status:ACTIVE" --format="value(account)" 2>/dev/null | head -1)
+    
+    if [[ -z "$current_user" ]]; then
+        print_status "FAIL" "Cannot determine current authenticated user"
+        return 1
+    fi
+    
+    print_status "INFO" "Testing permissions for user: $current_user"
+    
+    AVAILABLE_ROLES_COUNT=0
+    MISSING_ROLES_COUNT=0
+    ROLE_RESULTS=()
+    
+    # Test each standard permission by trying actual commands
+    for permission in "${!standard_permissions[@]}"; do
+        local description="${standard_permissions[$permission]}"
+        
+        # Map permissions to actual gcloud commands
+        case "$permission" in
+            "compute_instances_list")
+                if test_gcloud_command "compute" "instances list" "$description" "--zones=$(gcloud config get-value compute/zone 2>/dev/null || echo 'us-central1-a')"; then
+                    ROLE_RESULTS["$permission"]="AVAILABLE"
+                    ((AVAILABLE_ROLES_COUNT++))
+                    print_status "PASS" "✓ $description"
+                else
+                    ROLE_RESULTS["$permission"]="MISSING"
+                    ((MISSING_ROLES_COUNT++))
+                    print_status "FAIL" "✗ $description"
+                fi
+                ;;
+            "compute_firewallRules_list")
+                if test_gcloud_command "compute" "firewall-rules list" "$description"; then
+                    ROLE_RESULTS["$permission"]="AVAILABLE"
+                    ((AVAILABLE_ROLES_COUNT++))
+                    print_status "PASS" "✓ $description"
+                else
+                    ROLE_RESULTS["$permission"]="MISSING"
+                    ((MISSING_ROLES_COUNT++))
+                    print_status "FAIL" "✗ $description"
+                fi
+                ;;
+            "compute_networks_list")
+                if test_gcloud_command "compute" "networks list" "$description"; then
+                    ROLE_RESULTS["$permission"]="AVAILABLE"
+                    ((AVAILABLE_ROLES_COUNT++))
+                    print_status "PASS" "✓ $description"
+                else
+                    ROLE_RESULTS["$permission"]="MISSING"
+                    ((MISSING_ROLES_COUNT++))
+                    print_status "FAIL" "✗ $description"
+                fi
+                ;;
+            "storage_buckets_list")
+                if gsutil ls >/dev/null 2>&1; then
+                    ROLE_RESULTS["$permission"]="AVAILABLE"
+                    ((AVAILABLE_ROLES_COUNT++))
+                    print_status "PASS" "✓ $description"
+                else
+                    ROLE_RESULTS["$permission"]="MISSING"
+                    ((MISSING_ROLES_COUNT++))
+                    print_status "FAIL" "✗ $description"
+                fi
+                ;;
+            "cloudsql_instances_list")
+                if test_gcloud_command "sql" "instances list" "$description"; then
+                    ROLE_RESULTS["$permission"]="AVAILABLE"
+                    ((AVAILABLE_ROLES_COUNT++))
+                    print_status "PASS" "✓ $description"
+                else
+                    ROLE_RESULTS["$permission"]="MISSING"
+                    ((MISSING_ROLES_COUNT++))
+                    print_status "FAIL" "✗ $description"
+                fi
+                ;;
+            "logging_sinks_list")
+                if test_gcloud_command "logging" "sinks list" "$description"; then
+                    ROLE_RESULTS["$permission"]="AVAILABLE"
+                    ((AVAILABLE_ROLES_COUNT++))
+                    print_status "PASS" "✓ $description"
+                else
+                    ROLE_RESULTS["$permission"]="MISSING"
+                    ((MISSING_ROLES_COUNT++))
+                    print_status "FAIL" "✗ $description"
+                fi
+                ;;
+            "iam_serviceAccounts_list")
+                if test_gcloud_command "iam" "service-accounts list" "$description"; then
+                    ROLE_RESULTS["$permission"]="AVAILABLE"
+                    ((AVAILABLE_ROLES_COUNT++))
+                    print_status "PASS" "✓ $description"
+                else
+                    ROLE_RESULTS["$permission"]="MISSING"
+                    ((MISSING_ROLES_COUNT++))
+                    print_status "FAIL" "✗ $description"
+                fi
+                ;;
+            "monitoring_alertPolicies_list")
+                if test_gcloud_command "alpha monitoring" "policies list" "$description"; then
+                    ROLE_RESULTS["$permission"]="AVAILABLE"
+                    ((AVAILABLE_ROLES_COUNT++))
+                    print_status "PASS" "✓ $description"
+                else
+                    ROLE_RESULTS["$permission"]="MISSING"
+                    ((MISSING_ROLES_COUNT++))
+                    print_status "FAIL" "✗ $description"
+                fi
+                ;;
+        esac
+    done
+    
+    local total_permissions=${#standard_permissions[@]}
+    local permission_coverage_percentage=0
+    
+    if [[ $total_permissions -gt 0 ]]; then
+        permission_coverage_percentage=$((AVAILABLE_ROLES_COUNT * 100 / total_permissions))
+    fi
+    
+    print_status "INFO" "Permission check: ${AVAILABLE_ROLES_COUNT}/${total_permissions} available (${permission_coverage_percentage}%)"
+    
+    if [[ $MISSING_ROLES_COUNT -gt 0 ]]; then
+        print_status "WARN" "Missing ${MISSING_ROLES_COUNT} required permissions"
+        echo ""
+        print_status "INFO" "Required permissions for PCI DSS assessment:"
+        for permission in "${!standard_permissions[@]}"; do
+            local description="${standard_permissions[$permission]}"
+            local status="${ROLE_RESULTS[$permission]:-MISSING}"
+            if [[ "$status" == "MISSING" ]]; then
+                print_status "WARN" "  - $description"
+            fi
+        done
+        echo ""
+        
+        # If we have most permissions (>= 75%), allow to continue
+        if [[ $permission_coverage_percentage -ge 75 ]]; then
+            print_status "INFO" "Most permissions available - assessment can proceed with some limitations"
+            return 0
+        else
+            print_status "INFO" "Please ensure the current user has the required permissions"
+            return 1
+        fi
+    fi
+    
+    print_status "PASS" "All required permissions are available"
+    return 0
+}
+
+# Original role-based check for fast validation
+check_role_assignments() {
+    print_status "INFO" "Checking role assignments for PCI DSS assessment..."
     
     # Get current user email
     local current_user
@@ -36,68 +252,116 @@ check_standard_roles() {
     
     print_status "INFO" "Checking roles for user: $current_user"
     
-    AVAILABLE_ROLES_COUNT=0
-    MISSING_ROLES_COUNT=0
-    ROLE_RESULTS=()
+    local available_roles=0
+    local missing_roles=0
     
-    # Check each standard PCI role
-    for role in "${!STANDARD_PCI_ROLES[@]}"; do
-        local role_name="${STANDARD_PCI_ROLES[$role]}"
+    # Standard GCP roles required for PCI DSS assessment
+    local -A standard_roles=(
+        ["roles/viewer"]="Viewer"
+        ["roles/iam.securityReviewer"]="Security Reviewer"
+        ["roles/logging.viewer"]="Logging Viewer"
+        ["roles/monitoring.viewer"]="Monitoring Viewer"
+        ["roles/cloudasset.viewer"]="Cloud Asset Viewer"
+        ["roles/accesscontextmanager.policyReader"]="Access Context Manager Policy Reader"
+        ["roles/owner"]="Owner"
+        ["roles/editor"]="Editor"
+    )
+    
+    # First, check for high-privilege roles (Owner/Editor) for fast exit
+    print_status "INFO" "Checking for high-privilege roles first..."
+    
+    for role in "roles/owner" "roles/editor"; do
+        local role_name="${standard_roles[$role]}"
+        local has_role=false
         
         if [[ -n "$PROJECT_ID" ]]; then
             # Check project-level role binding
-            if gcloud projects get-iam-policy "$PROJECT_ID" --format="value(bindings.members)" 2>/dev/null | \
-               grep -q "user:$current_user" && \
-               gcloud projects get-iam-policy "$PROJECT_ID" --format="value(bindings[role=$role].members)" 2>/dev/null | \
+            if gcloud projects get-iam-policy "$PROJECT_ID" --format="value(bindings[role=$role].members)" 2>/dev/null | \
                grep -q "user:$current_user"; then
-                ROLE_RESULTS["$role"]="AVAILABLE"
-                ((AVAILABLE_ROLES_COUNT++))
-                print_status "PASS" "✓ $role_name ($role)"
-            else
-                ROLE_RESULTS["$role"]="MISSING"
-                ((MISSING_ROLES_COUNT++))
-                print_status "FAIL" "✗ $role_name ($role)"
+                has_role=true
             fi
         elif [[ -n "$ORG_ID" ]]; then
             # Check organization-level role binding
-            if gcloud organizations get-iam-policy "$ORG_ID" --format="value(bindings.members)" 2>/dev/null | \
-               grep -q "user:$current_user" && \
-               gcloud organizations get-iam-policy "$ORG_ID" --format="value(bindings[role=$role].members)" 2>/dev/null | \
+            if gcloud organizations get-iam-policy "$ORG_ID" --format="value(bindings[role=$role].members)" 2>/dev/null | \
                grep -q "user:$current_user"; then
-                ROLE_RESULTS["$role"]="AVAILABLE"
-                ((AVAILABLE_ROLES_COUNT++))
-                print_status "PASS" "✓ $role_name ($role)"
-            else
-                ROLE_RESULTS["$role"]="MISSING"
-                ((MISSING_ROLES_COUNT++))
-                print_status "FAIL" "✗ $role_name ($role)"
+                has_role=true
             fi
+        fi
+        
+        if [[ "$has_role" == "true" ]]; then
+            print_status "PASS" "✓ $role_name ($role)"
+            print_status "PASS" "High-privilege role detected - has all required permissions"
+            print_status "INFO" "Skipping individual role checks (not needed with $role_name)"
+            return 0
         fi
     done
     
-    local total_roles=${#STANDARD_PCI_ROLES[@]}
-    local role_coverage_percentage=$((AVAILABLE_ROLES_COUNT * 100 / total_roles))
+    print_status "INFO" "No high-privilege roles found - checking individual roles..."
     
-    print_status "INFO" "Role check: ${AVAILABLE_ROLES_COUNT}/${total_roles} available (${role_coverage_percentage}%)"
-    
-    if [[ $MISSING_ROLES_COUNT -gt 0 ]]; then
-        print_status "WARN" "Missing ${MISSING_ROLES_COUNT} required standard roles"
-        echo ""
-        print_status "INFO" "Required standard roles for PCI DSS assessment:"
-        for role in "${!STANDARD_PCI_ROLES[@]}"; do
-            local role_name="${STANDARD_PCI_ROLES[$role]}"
-            local status="${ROLE_RESULTS[$role]:-MISSING}"
-            if [[ "$status" == "MISSING" ]]; then
-                print_status "WARN" "  - $role_name ($role)"
+    # Check each remaining standard role
+    for role in "${!standard_roles[@]}"; do
+        # Skip Owner/Editor since we already checked them
+        if [[ "$role" == "roles/owner" || "$role" == "roles/editor" ]]; then
+            continue
+        fi
+        
+        local role_name="${standard_roles[$role]}"
+        local has_role=false
+        
+        if [[ -n "$PROJECT_ID" ]]; then
+            # Check project-level role binding
+            if gcloud projects get-iam-policy "$PROJECT_ID" --format="value(bindings[role=$role].members)" 2>/dev/null | \
+               grep -q "user:$current_user"; then
+                has_role=true
             fi
-        done
-        echo ""
-        print_status "INFO" "Please ensure the current user has these standard roles assigned"
+        elif [[ -n "$ORG_ID" ]]; then
+            # Check organization-level role binding
+            if gcloud organizations get-iam-policy "$ORG_ID" --format="value(bindings[role=$role].members)" 2>/dev/null | \
+               grep -q "user:$current_user"; then
+                has_role=true
+            fi
+        fi
+        
+        if [[ "$has_role" == "true" ]]; then
+            ((available_roles++))
+            print_status "PASS" "✓ $role_name ($role)"
+        else
+            print_status "FAIL" "✗ $role_name ($role)"
+        fi
+    done
+    
+    # Check if we have enough standard roles (at least 4 out of 6 core roles)
+    if [[ $available_roles -ge 4 ]]; then
+        print_status "PASS" "Sufficient role assignments found ($available_roles roles)"
+        return 0
+    else
+        print_status "WARN" "Insufficient role assignments found ($available_roles roles)"
         return 1
     fi
+}
+
+# Combined permission check: try roles first, fall back to functional testing
+check_standard_roles() {
+    print_status "INFO" "=== STEP 1: Quick Role Assignment Check ==="
     
-    print_status "PASS" "All required standard roles are available"
-    return 0
+    # Try role-based check first (fast)
+    if check_role_assignments; then
+        print_status "PASS" "Role-based validation successful - proceeding with assessment"
+        return 0
+    fi
+    
+    print_status "INFO" "Role assignment check failed - switching to functional testing..."
+    echo ""
+    print_status "INFO" "=== STEP 2: Functional Permission Testing ==="
+    
+    # Fall back to functional testing (slower but more accurate)
+    if check_standard_permissions; then
+        print_status "PASS" "Functional validation successful - proceeding with assessment"
+        return 0
+    else
+        print_status "FAIL" "Both role assignment and functional testing failed"
+        return 1
+    fi
 }
 
 register_required_permissions() {
@@ -134,15 +398,18 @@ check_all_permissions() {
     PERMISSION_RESULTS=()
     
     for permission in "${REQUIRED_PERMISSIONS[@]}"; do
+        # Convert dots to underscores for array key to avoid bash syntax errors
+        local safe_key="${permission//\./_}"
+        
         if [[ -n "$PROJECT_ID" ]] && \
            gcloud projects test-iam-permissions "$PROJECT_ID" \
            --permissions="$permission" --format="value(permissions)" 2>/dev/null | \
            grep -q "$permission"; then
-            PERMISSION_RESULTS["$permission"]="AVAILABLE"
+            PERMISSION_RESULTS["$safe_key"]="AVAILABLE"
             ((AVAILABLE_PERMISSIONS_COUNT++))
             print_status "PASS" "✓ $permission"
         else
-            PERMISSION_RESULTS["$permission"]="MISSING"
+            PERMISSION_RESULTS["$safe_key"]="MISSING"
             ((MISSING_PERMISSIONS_COUNT++))
             print_status "FAIL" "✗ $permission"
         fi
@@ -260,13 +527,21 @@ check_required_permissions() {
             return 0
         else
             print_status "WARN" "Some requirement-specific permissions missing"
-            return $(prompt_continue_limited; echo $?)
+            if prompt_continue_limited; then
+                return 0
+            else
+                return 1
+            fi
         fi
     else
         print_status "FAIL" "Critical standard roles missing - assessment quality will be significantly impacted"
         echo ""
         print_status "INFO" "Recommendation: Assign the missing standard roles before proceeding"
-        return $(prompt_continue_limited; echo $?)
+        if prompt_continue_limited; then
+            return 0
+        else
+            return 1
+        fi
     fi
 }
 

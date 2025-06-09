@@ -54,43 +54,31 @@ REQUIREMENT_NUMBER="1"
 # Parse command line arguments using shared framework
 parse_common_arguments "$@"
 
-# Register required permissions for this assessment
-register_required_permissions "$REQUIREMENT_NUMBER" "compute.networks.list" "compute.firewalls.list" "compute.instances.list"
-REPORT_TITLE="PCI DSS 4.0.1 - Requirement $REQUIREMENT_NUMBER Compliance Assessment Report (GCP)"
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-OUTPUT_DIR="./reports"
+# Setup report configuration using shared library
+load_requirement_config "${REQUIREMENT_NUMBER}"
 
-# Set scope-specific variables
-if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-    OUTPUT_FILE="$OUTPUT_DIR/gcp_org_pci_req${REQUIREMENT_NUMBER}_report_$TIMESTAMP.html"
-    REPORT_TITLE="$REPORT_TITLE (Organization-wide)"
-else
-    OUTPUT_FILE="$OUTPUT_DIR/gcp_project_pci_req${REQUIREMENT_NUMBER}_report_$TIMESTAMP.html"
-    REPORT_TITLE="$REPORT_TITLE (Project-specific)"
-fi
+# Validate scope and setup project context using shared library
+setup_assessment_scope || exit 1
 
-# Create reports directory if it doesn't exist
-mkdir -p "$OUTPUT_DIR"
+# Check permissions using shared library
+check_required_permissions "compute.networks.list" "compute.firewalls.list" "compute.instances.list" "compute.routes.list" "compute.routers.list" "dns.managedZones.list" || exit 1
 
-# Counters for checks
+# Set output file path
+OUTPUT_FILE="${REPORT_DIR}/pci_req${REQUIREMENT_NUMBER}_report_$(date +%Y%m%d_%H%M%S).html"
+
+# Initialize HTML report using shared library
+initialize_report "$OUTPUT_FILE" "PCI DSS 4.0.1 - Requirement $REQUIREMENT_NUMBER Compliance Assessment Report" "${REQUIREMENT_NUMBER}"
+
+# Counters for checks  
 total_checks=0
 passed_checks=0
 warning_checks=0
 failed_checks=0
-access_denied_checks=0
 
-# Get project and organization info based on scope
-if [ -n "$SPECIFIC_PROJECT" ]; then
-    DEFAULT_PROJECT="$SPECIFIC_PROJECT"
-else
-    DEFAULT_PROJECT=$(gcloud config get-value project 2>/dev/null)
-fi
-
-if [ -n "$SPECIFIC_ORG" ]; then
-    DEFAULT_ORG="$SPECIFIC_ORG"
-else
-    DEFAULT_ORG=$(gcloud organizations list --format="value(name)" --limit=1 2>/dev/null | sed 's/organizations\///')
-fi
+# The shared library already set PROJECT_ID and ORG_ID, so we use those
+# For backward compatibility with existing code, create aliases
+DEFAULT_PROJECT="$PROJECT_ID"
+DEFAULT_ORG="$ORG_ID"
 
 # Function to get clean network names only
 get_clean_networks() {
@@ -104,22 +92,6 @@ get_clean_networks() {
 # HTML functions now provided by gcp_html_report.sh framework library
 
 # Function to check GCP API access
-check_gcp_permission() {
-    local service=$1
-    local operation=$2
-    local test_command=$3
-    
-    print_status "INFO" "Checking $service $operation..."
-    
-    if eval "$test_command" &>/dev/null; then
-        print_status "PASS" "✓ $service $operation access verified"
-        return 0
-    else
-        print_status "FAIL" "✗ $service $operation access failed"
-        ((access_denied_checks++))
-        return 1
-    fi
-}
 
 # Function to build scope-aware gcloud commands
 build_gcloud_command() {
@@ -238,80 +210,11 @@ else
     print_status "WARN" "Checking specific networks: $CDE_NETWORKS"
 fi
 
-# Initialize HTML report using shared framework
-setup_assessment_scope
-initialize_report "$OUTPUT_FILE" "$REPORT_TITLE" "$REQUIREMENT_NUMBER"
+# Begin main assessment logic
 
 echo ""
 echo "Starting assessment at $(date)"
 echo ""
-
-#----------------------------------------------------------------------
-# SECTION 1: PERMISSIONS CHECK
-#----------------------------------------------------------------------
-add_section "$OUTPUT_FILE" "permissions" "GCP Permissions Verification" "active"
-
-print_status "INFO" "=== CHECKING REQUIRED GCP PERMISSIONS ==="
-
-# Check all required permissions based on scope
-if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-    # Organization-wide permission checks
-    check_gcp_permission "Projects" "list" "gcloud projects list --filter='parent.id:$DEFAULT_ORG' --limit=1"
-    ((total_checks++))
-    
-    check_gcp_permission "Organizations" "access" "gcloud organizations list --filter='name:organizations/$DEFAULT_ORG' --limit=1"
-    ((total_checks++))
-fi
-
-# Scope-aware permission checks
-PROJECT_FLAG=""
-if [ "$ASSESSMENT_SCOPE" == "project" ]; then
-    PROJECT_FLAG="--project=$DEFAULT_PROJECT"
-fi
-
-check_gcp_permission "Compute Engine" "networks" "gcloud compute networks list $PROJECT_FLAG --limit=1"
-((total_checks++))
-
-check_gcp_permission "Compute Engine" "firewalls" "gcloud compute firewall-rules list $PROJECT_FLAG --limit=1"
-((total_checks++))
-
-check_gcp_permission "Compute Engine" "instances" "gcloud compute instances list $PROJECT_FLAG --limit=1"
-((total_checks++))
-
-check_gcp_permission "Compute Engine" "routes" "gcloud compute routes list $PROJECT_FLAG --limit=1"
-((total_checks++))
-
-check_gcp_permission "Compute Engine" "routers" "gcloud compute routers list $PROJECT_FLAG --limit=1"
-((total_checks++))
-
-check_gcp_permission "DNS" "zones" "gcloud dns managed-zones list $PROJECT_FLAG --limit=1"
-((total_checks++))
-
-if [ "$ASSESSMENT_SCOPE" == "organization" ] && [ -n "$DEFAULT_ORG" ]; then
-    check_gcp_permission "VPC Service Controls" "policies" "gcloud access-context-manager policies list --organization=$DEFAULT_ORG --limit=1"
-    ((total_checks++))
-fi
-
-# Calculate permissions percentage
-available_permissions=$((total_checks - access_denied_checks))
-if [ $available_permissions -gt 0 ]; then
-    permissions_percentage=$(( ((total_checks - access_denied_checks) * 100) / total_checks ))
-else
-    permissions_percentage=0
-fi
-
-if [ $permissions_percentage -lt 70 ]; then
-    print_status "FAIL" "WARNING: Insufficient permissions to perform a complete PCI Requirement 1 assessment."
-    add_check_result "$OUTPUT_FILE" "fail" "Permission Assessment" "<p class='red'>Insufficient permissions detected. Only $permissions_percentage% of required permissions are available.</p><p>Without these permissions, the assessment will be incomplete and may not accurately reflect your PCI DSS compliance status.</p>"
-    read -p "Continue with limited assessment? (y/n): " CONTINUE
-    if [[ ! $CONTINUE =~ ^[Yy]$ ]]; then
-        echo "Assessment aborted."
-        exit 1
-    fi
-else
-    print_status "PASS" "Permission check complete: $permissions_percentage% permissions available"
-    add_check_result "$OUTPUT_FILE" "pass" "Permission Assessment" "<p class='green'>Sufficient permissions detected. $permissions_percentage% of required permissions are available.</p>"
-fi
 
 # Reset counters for actual compliance checks
 total_checks=0
@@ -419,8 +322,8 @@ else
         
         # Check for overly permissive rules (0.0.0.0/0)
         if [[ "$sources" == *"0.0.0.0/0"* ]]; then
-            print_status "FAIL" "WARNING: Firewall rule $name allows traffic from anywhere (0.0.0.0/0)"
-            firewall_details+="<li class='red'><strong>WARNING:</strong> Allows traffic from anywhere (0.0.0.0/0)</li>"
+            print_status "FAIL" "SECURITY ISSUE: Firewall rule $name allows traffic from anywhere (0.0.0.0/0)"
+            firewall_details+="<li class='red'><strong>SECURITY ISSUE:</strong> Allows traffic from anywhere (0.0.0.0/0)</li>"
             
             if [ -n "$allowed" ]; then
                 firewall_details+="<li><strong>Allowed protocols/ports:</strong></li><ul>"
@@ -882,6 +785,11 @@ add_check_result "$OUTPUT_FILE" "info" "1.5.1 - Firewall rule management" "$rule
 #----------------------------------------------------------------------
 # FINAL REPORT
 #----------------------------------------------------------------------
+
+# Close the last section before adding summary
+html_append "$OUTPUT_FILE" "            </div> <!-- Close final section content -->
+        </div> <!-- Close final section -->"
+
 # Add summary metrics before finalizing
 add_summary_metrics "$OUTPUT_FILE" "$total_checks" "$passed_checks" "$failed_checks" "$warning_checks"
 
