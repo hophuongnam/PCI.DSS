@@ -31,8 +31,185 @@ mock_command_with_output() {
     local command="$1"
     local output="$2"
     local exit_code="${3:-0}"
+    
     eval "${command}() { echo '$output'; return $exit_code; }"
     export -f "${command}"
+}
+
+# =============================================================================
+# GCP-Specific Mocking Functions
+# =============================================================================
+
+# Set up basic GCP environment mocking
+setup_mock_gcp_environment() {
+    # Create mock directory if it doesn't exist
+    mkdir -p "$TEST_MOCKS_DIR"
+    
+    # Set up mock gcloud command
+    create_mock_gcloud_command
+    
+    # Add mock directory to PATH
+    export PATH="$TEST_MOCKS_DIR:$PATH"
+    
+    # Set default GCP environment variables
+    export GOOGLE_CLOUD_PROJECT="${MOCK_PROJECT_ID:-test-project-123}"
+    export GCLOUD_PROJECT="${MOCK_PROJECT_ID:-test-project-123}"
+}
+
+# Create comprehensive mock gcloud command
+create_mock_gcloud_command() {
+    cat > "$TEST_MOCKS_DIR/gcloud" << 'EOF'
+#!/bin/bash
+
+# Mock gcloud command for testing
+# Simulates various GCP API responses based on command structure
+
+# Parse command arguments
+COMMAND_TYPE=""
+RESOURCE_TYPE=""
+ACTION=""
+
+case "$1" in
+    "compute")
+        COMMAND_TYPE="compute"
+        RESOURCE_TYPE="$2"
+        ACTION="$3"
+        ;;
+    "config")
+        COMMAND_TYPE="config"
+        ACTION="$2"
+        ;;
+    "auth")
+        COMMAND_TYPE="auth"
+        ACTION="$2"
+        ;;
+    *)
+        COMMAND_TYPE="unknown"
+        ;;
+esac
+
+# Handle different mock scenarios
+if [[ "$MOCK_AUTH_FAILURE" == "true" ]]; then
+    echo "ERROR: Authentication failed" >&2
+    exit 1
+fi
+
+if [[ "$MOCK_API_FAILURE" == "true" ]]; then
+    echo "ERROR: API request failed" >&2
+    exit 1
+fi
+
+if [[ "$MOCK_PERMISSION_DENIED" == "true" ]]; then
+    echo "ERROR: Permission denied" >&2
+    exit 1
+fi
+
+# Generate mock responses based on command type
+case "$COMMAND_TYPE" in
+    "compute")
+        case "$RESOURCE_TYPE" in
+            "networks")
+                if [[ "$ACTION" == "list" ]]; then
+                    echo '[
+                        {
+                            "name": "test-vpc-network",
+                            "autoCreateSubnetworks": false,
+                            "routingConfig": {"routingMode": "REGIONAL"},
+                            "selfLink": "https://www.googleapis.com/compute/v1/projects/test-project/global/networks/test-vpc-network"
+                        },
+                        {
+                            "name": "default",
+                            "autoCreateSubnetworks": true,
+                            "routingConfig": {"routingMode": "GLOBAL"},
+                            "selfLink": "https://www.googleapis.com/compute/v1/projects/test-project/global/networks/default"
+                        }
+                    ]'
+                fi
+                ;;
+            "firewalls")
+                if [[ "$ACTION" == "list" ]]; then
+                    echo '[
+                        {
+                            "name": "default-allow-internal",
+                            "direction": "INGRESS",
+                            "priority": 65534,
+                            "network": "https://www.googleapis.com/compute/v1/projects/test-project/global/networks/default",
+                            "allowed": [
+                                {"IPProtocol": "tcp", "ports": ["0-65535"]},
+                                {"IPProtocol": "udp", "ports": ["0-65535"]},
+                                {"IPProtocol": "icmp"}
+                            ],
+                            "sourceRanges": ["10.128.0.0/9"]
+                        },
+                        {
+                            "name": "default-allow-ssh",
+                            "direction": "INGRESS",
+                            "priority": 65534,
+                            "network": "https://www.googleapis.com/compute/v1/projects/test-project/global/networks/default",
+                            "allowed": [{"IPProtocol": "tcp", "ports": ["22"]}],
+                            "sourceRanges": ["0.0.0.0/0"]
+                        }
+                    ]'
+                fi
+                ;;
+            "instances")
+                if [[ "$ACTION" == "list" ]]; then
+                    echo '[
+                        {
+                            "name": "test-instance-1",
+                            "zone": "us-central1-a",
+                            "status": "RUNNING",
+                            "networkInterfaces": [
+                                {
+                                    "network": "https://www.googleapis.com/compute/v1/projects/test-project/global/networks/default",
+                                    "subnetwork": "https://www.googleapis.com/compute/v1/projects/test-project/regions/us-central1/subnetworks/default"
+                                }
+                            ]
+                        }
+                    ]'
+                fi
+                ;;
+            *)
+                echo '[]'
+                ;;
+        esac
+        ;;
+    "config")
+        case "$ACTION" in
+            "get-value")
+                if [[ "$3" == "project" ]]; then
+                    echo "${GOOGLE_CLOUD_PROJECT:-test-project-123}"
+                else
+                    echo "unknown-config-value"
+                fi
+                ;;
+            *)
+                echo "Configuration updated"
+                ;;
+        esac
+        ;;
+    "auth")
+        echo "Authentication successful"
+        ;;
+    *)
+        echo "{}"
+        ;;
+esac
+
+exit 0
+EOF
+    
+    chmod +x "$TEST_MOCKS_DIR/gcloud"
+}
+
+# Create mock that exits early for argument testing
+create_mock_gcloud_with_early_exit() {
+    cat > "$TEST_MOCKS_DIR/gcloud" << 'EOF'
+#!/bin/bash
+# Early exit mock for testing argument parsing
+exit 0
+EOF
+    chmod +x "$TEST_MOCKS_DIR/gcloud"
 }
 
 # Mock command failure
@@ -682,6 +859,7 @@ list_active_mocks() {
 
 # Export all mock functions
 export -f mock_command_success mock_command_missing mock_command_with_output mock_command_failure
+export -f setup_mock_gcp_environment create_mock_gcloud_command create_mock_gcloud_with_early_exit
 export -f mock_gcloud_auth_active mock_gcloud_auth_inactive mock_gcloud_projects_list
 export -f mock_gcloud_project_describe_success mock_gcloud_project_describe_failure
 export -f mock_gcloud_organization_describe_success mock_gcloud_organization_describe_failure

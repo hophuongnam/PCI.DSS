@@ -4,6 +4,55 @@
 # Test Helper Functions for GCP Shared Library Testing
 # =============================================================================
 
+# BATS assertion functions
+assert_success() {
+    if [[ "$status" -ne 0 ]]; then
+        echo "Expected success but got exit code $status" >&2
+        echo "Output: $output" >&2
+        return 1
+    fi
+}
+
+assert_failure() {
+    if [[ "$status" -eq 0 ]]; then
+        echo "Expected failure but got success" >&2
+        echo "Output: $output" >&2
+        return 1
+    fi
+}
+
+assert_output() {
+    local expected=""
+    local partial=false
+    
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --partial)
+                partial=true
+                shift
+                ;;
+            *)
+                expected="$1"
+                shift
+                ;;
+        esac
+    done
+    
+    if [[ "$partial" == "true" ]]; then
+        if [[ "$output" != *"$expected"* ]]; then
+            echo "Expected output to contain '$expected'" >&2
+            echo "Actual output: $output" >&2
+            return 1
+        fi
+    else
+        if [[ "$output" != "$expected" ]]; then
+            echo "Expected output: $expected" >&2
+            echo "Actual output: $output" >&2
+            return 1
+        fi
+    fi
+}
+
 # Global test configuration
 TEST_TMPDIR=""
 TEST_LIB_DIR=""
