@@ -1,0 +1,6 @@
+        <div class="section" id="section-Authentication and Identity Management Assessment">
+            <div class="section-header" onclick="toggleSection('Authentication and Identity Management Assessment')" aria-expanded="false">
+                <h3 style="margin: 0;">Assessment of user identification and authentication access controls</h3>
+            </div>
+            <div class="section-content" id="content-Authentication and Identity Management Assessment">
+

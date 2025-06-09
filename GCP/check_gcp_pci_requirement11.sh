@@ -42,18 +42,18 @@ OUTPUT_FILE="${REPORT_DIR}/pci_req${REQUIREMENT_NUMBER}_report_$(date +%Y%m%d_%H
 # Initialize HTML report using shared library
 initialize_report "$OUTPUT_FILE" "PCI DSS 4.0.1 - Requirement $REQUIREMENT_NUMBER Compliance Assessment Report" "${REQUIREMENT_NUMBER}"
 
-print_status "INFO" "============================================="
-print_status "INFO" "  PCI DSS 4.0.1 - Requirement 11 (GCP)"
-print_status "INFO" "============================================="
+print_status "info" "============================================="
+print_status "info" "  PCI DSS 4.0.1 - Requirement 11 (GCP)"
+print_status "info" "============================================="
 echo ""
 
 # Display scope information using shared library
 # Display scope information using shared library - now handled in print_status calls
-print_status "INFO" "Assessment scope: ${ASSESSMENT_SCOPE:-project}"
+print_status "info" "Assessment scope: ${ASSESSMENT_SCOPE:-project}"
 if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
-    print_status "INFO" "Organization ID: ${ORG_ID}"
+    print_status "info" "Organization ID: ${ORG_ID}"
 else
-    print_status "INFO" "Project ID: ${PROJECT_ID}"
+    print_status "info" "Project ID: ${PROJECT_ID}"
 fi
 
 echo ""
@@ -127,26 +127,27 @@ fi
 setup_assessment_scope "$SCOPE" "$PROJECT_ID" "$ORG_ID"
 
 # Configure HTML report
-initialize_report "PCI DSS Requirement $REQUIREMENT_NUMBER Assessment" "$ASSESSMENT_SCOPE"
+OUTPUT_FILE="${REPORT_DIR}/pci_req${REQUIREMENT_NUMBER}_report_$(date +%Y%m%d_%H%M%S).html"
+initialize_report "$OUTPUT_FILE" "PCI DSS Requirement $REQUIREMENT_NUMBER Assessment" "$REQUIREMENT_NUMBER"
 
 # Add assessment introduction
-add_section "security_testing" "Security Testing Assessment" "Assessment of security testing and monitoring controls"
+add_section "$OUTPUT_FILE" "security_testing" "Security Testing Assessment" "Assessment of security testing and monitoring controls"
 
-debug_log "Starting PCI DSS Requirement 11 assessment"
+log_debug "Starting PCI DSS Requirement 11 assessment"
 
 # Core Assessment Functions
 
 # 11.1 - Processes and mechanisms for regularly testing security
 assess_security_testing_processes() {
     local project_id="$1"
-    debug_log "Assessing security testing processes for project: $project_id"
+    log_debug "Assessing security testing processes for project: $project_id"
     
     # 11.1.1 - Security policies and operational procedures documentation
-    add_check_result "11.1.1 - Security policies documentation" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "11.1.1 - Security policies documentation" \
         "Verify documented security policies for Requirement 11 are maintained, up to date, in use, and known to affected parties"
     
     # 11.1.2 - Roles and responsibilities documentation
-    add_check_result "11.1.2 - Roles and responsibilities" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "11.1.2 - Roles and responsibilities" \
         "Verify roles and responsibilities for Requirement 11 activities are documented, assigned, and understood"
     
     # Check for Security Command Center as automated security testing
@@ -158,10 +159,10 @@ assess_security_testing_processes() {
     
     if [[ -n "$scc_sources" ]]; then
         local source_count=$(echo "$scc_sources" | wc -l)
-        add_check_result "Security Command Center sources" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Security Command Center sources" \
             "Found $source_count Security Command Center sources providing automated security testing"
     else
-        add_check_result "Security Command Center sources" "WARN" \
+        add_check_result "$OUTPUT_FILE" "warning" "Security Command Center sources" \
             "No Security Command Center sources found - consider enabling for automated security testing"
     fi
     
@@ -176,10 +177,10 @@ assess_security_testing_processes() {
     
     if [[ -n "$security_findings" ]]; then
         local finding_count=$(echo "$security_findings" | wc -l)
-        add_check_result "Ongoing security monitoring" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Ongoing security monitoring" \
             "Found $finding_count active security findings indicating ongoing monitoring"
     else
-        add_check_result "Ongoing security monitoring" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "Ongoing security monitoring" \
             "No active security findings - environment may be secure or monitoring not configured"
     fi
 }
@@ -187,7 +188,7 @@ assess_security_testing_processes() {
 # 11.2 - Wireless access point identification and monitoring
 assess_wireless_access_points() {
     local project_id="$1"
-    debug_log "Assessing wireless access point controls for project: $project_id"
+    log_debug "Assessing wireless access point controls for project: $project_id"
     
     # In cloud environments, this typically relates to network access controls
     # Check for VPC networks and their security controls
@@ -198,7 +199,7 @@ assess_wireless_access_points() {
         2>/dev/null)
     
     if [[ -z "$vpc_networks" ]]; then
-        add_check_result "11.2 - Network access controls" "WARN" \
+        add_check_result "$OUTPUT_FILE" "warning" "11.2 - Network access controls" \
             "No VPC networks found - cannot assess network access controls"
         return
     fi
@@ -215,10 +216,10 @@ assess_wireless_access_points() {
         
         if [[ "$network_mode" == "CUSTOM" ]]; then
             ((custom_networks++))
-            add_check_result "Network security control" "PASS" \
+            add_check_result "$OUTPUT_FILE" "pass" "Network security control" \
                 "Custom VPC network '$network_name' provides controlled network access"
         else
-            add_check_result "Network security control" "WARN" \
+            add_check_result "$OUTPUT_FILE" "warning" "Network security control" \
                 "Auto VPC network '$network_name' may have default access rules"
         fi
         
@@ -235,28 +236,28 @@ assess_wireless_access_points() {
             rule_count=$(echo "$firewall_rules" | wc -l)
         fi
         
-        add_check_result "Network firewall rules" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "Network firewall rules" \
             "Network '$network_name' has $rule_count firewall rules configured"
         
     done <<< "$vpc_networks"
     
     # 11.2.1 - Authorized and unauthorized access point management
-    add_check_result "11.2.1 - Access point testing" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "11.2.1 - Access point testing" \
         "For physical environments: Test for unauthorized wireless access points at least every 3 months"
     
     # 11.2.2 - Inventory of authorized wireless access points
-    add_check_result "11.2.2 - Access point inventory" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "11.2.2 - Access point inventory" \
         "Maintain inventory of authorized wireless access points with business justification"
     
     # Cloud-specific wireless assessment
-    add_check_result "Cloud network access control" "PASS" \
+    add_check_result "$OUTPUT_FILE" "pass" "Cloud network access control" \
         "Found $total_networks VPC networks ($custom_networks custom) providing controlled network access equivalent to wireless AP controls"
 }
 
 # 11.3 - Vulnerability scanning
 assess_vulnerability_scanning() {
     local project_id="$1"
-    debug_log "Assessing vulnerability scanning for project: $project_id"
+    log_debug "Assessing vulnerability scanning for project: $project_id"
     
     # Check for Security Command Center findings related to vulnerabilities
     local vulnerability_findings
@@ -268,7 +269,7 @@ assess_vulnerability_scanning() {
     
     if [[ -n "$vulnerability_findings" ]]; then
         local vuln_count=$(echo "$vulnerability_findings" | wc -l)
-        add_check_result "Vulnerability detection" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Vulnerability detection" \
             "Found $vuln_count vulnerability findings - indicates active vulnerability scanning"
         
         # Analyze severity distribution
@@ -276,18 +277,18 @@ assess_vulnerability_scanning() {
         local high_vulns=$(echo "$vulnerability_findings" | grep -c "HIGH" || echo 0)
         local medium_vulns=$(echo "$vulnerability_findings" | grep -c "MEDIUM" || echo 0)
         
-        add_check_result "Vulnerability severity analysis" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "Vulnerability severity analysis" \
             "Vulnerabilities by severity: Critical=$critical_vulns, High=$high_vulns, Medium=$medium_vulns"
         
         if [[ $critical_vulns -gt 0 ]] || [[ $high_vulns -gt 0 ]]; then
-            add_check_result "11.3.1 - Critical/High vulnerability resolution" "FAIL" \
+            add_check_result "$OUTPUT_FILE" "fail" "11.3.1 - Critical/High vulnerability resolution" \
                 "Found $critical_vulns critical and $high_vulns high severity vulnerabilities requiring immediate attention"
         else
-            add_check_result "11.3.1 - Critical/High vulnerability resolution" "PASS" \
+            add_check_result "$OUTPUT_FILE" "pass" "11.3.1 - Critical/High vulnerability resolution" \
                 "No critical or high severity vulnerabilities found"
         fi
     else
-        add_check_result "11.3.1 - Internal vulnerability scanning" "WARN" \
+        add_check_result "$OUTPUT_FILE" "warning" "11.3.1 - Internal vulnerability scanning" \
             "No vulnerability findings found - verify if vulnerability scanning is configured"
     fi
     
@@ -299,27 +300,27 @@ assess_vulnerability_scanning() {
         2>/dev/null | head -5)
     
     if [[ -n "$container_vulnerabilities" ]]; then
-        add_check_result "Container vulnerability scanning" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Container vulnerability scanning" \
             "Container vulnerability scanning is active"
     else
-        add_check_result "Container vulnerability scanning" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "Container vulnerability scanning" \
             "No container vulnerability scan results found"
     fi
     
     # 11.3.1.1 - Other vulnerability management
-    add_check_result "11.3.1.1 - Vulnerability risk management" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "11.3.1.1 - Vulnerability risk management" \
         "Verify non-critical vulnerabilities are managed per targeted risk analysis"
     
     # 11.3.1.2 - Authenticated scanning
-    add_check_result "11.3.1.2 - Authenticated scanning" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "11.3.1.2 - Authenticated scanning" \
         "Verify vulnerability scans use authenticated scanning where possible"
     
     # 11.3.1.3 - Scanning after significant changes
-    add_check_result "11.3.1.3 - Change-based scanning" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "11.3.1.3 - Change-based scanning" \
         "Verify vulnerability scans are performed after significant infrastructure changes"
     
     # 11.3.2 - External vulnerability scanning
-    add_check_result "11.3.2 - External vulnerability scanning" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "11.3.2 - External vulnerability scanning" \
         "Verify external vulnerability scans are performed quarterly by approved scanning vendor (ASV)"
     
     # Check for Web Security Scanner results
@@ -332,10 +333,10 @@ assess_vulnerability_scanning() {
         2>/dev/null)
     
     if [[ -n "$web_scan_results" ]]; then
-        add_check_result "Web Security Scanner" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Web Security Scanner" \
             "Web Security Scanner activity detected for web application testing"
     else
-        add_check_result "Web Security Scanner" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "Web Security Scanner" \
             "No Web Security Scanner activity found"
     fi
 }
@@ -343,26 +344,26 @@ assess_vulnerability_scanning() {
 # 11.4 - Penetration testing
 assess_penetration_testing() {
     local project_id="$1"
-    debug_log "Assessing penetration testing for project: $project_id"
+    log_debug "Assessing penetration testing for project: $project_id"
     
     # 11.4.1 - Penetration testing methodology
-    add_check_result "11.4.1 - Penetration testing methodology" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "11.4.1 - Penetration testing methodology" \
         "Verify penetration testing methodology is defined, documented, and implemented with industry-accepted approaches"
     
     # 11.4.2 - Internal penetration testing
-    add_check_result "11.4.2 - Internal penetration testing" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "11.4.2 - Internal penetration testing" \
         "Verify internal penetration testing is performed at least annually and after significant changes"
     
     # 11.4.3 - External penetration testing
-    add_check_result "11.4.3 - External penetration testing" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "11.4.3 - External penetration testing" \
         "Verify external penetration testing is performed at least annually and after significant changes"
     
     # 11.4.4 - Penetration testing remediation
-    add_check_result "11.4.4 - Penetration testing remediation" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "11.4.4 - Penetration testing remediation" \
         "Verify exploitable vulnerabilities found in penetration testing are corrected and retested"
     
     # 11.4.5 - Segmentation testing
-    add_check_result "11.4.5 - Segmentation testing" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "11.4.5 - Segmentation testing" \
         "If segmentation is used, verify penetration tests validate segmentation controls annually"
     
     # Check for evidence of security testing activities in audit logs
@@ -376,10 +377,10 @@ assess_penetration_testing() {
     
     if [[ -n "$security_testing_logs" ]]; then
         local test_count=$(echo "$security_testing_logs" | wc -l)
-        add_check_result "Security testing activity" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Security testing activity" \
             "Found $test_count security testing activities in audit logs"
     else
-        add_check_result "Security testing activity" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "Security testing activity" \
             "No security testing activities found in recent audit logs"
     fi
     
@@ -392,10 +393,10 @@ assess_penetration_testing() {
         2>/dev/null)
     
     if [[ -n "$testing_accounts" ]]; then
-        add_check_result "Security testing accounts" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Security testing accounts" \
             "Found service accounts that may be used for security testing"
     else
-        add_check_result "Security testing accounts" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "Security testing accounts" \
             "No dedicated security testing service accounts found"
     fi
 }
@@ -403,7 +404,7 @@ assess_penetration_testing() {
 # 11.5 - Network intrusion detection and file integrity monitoring
 assess_intrusion_detection() {
     local project_id="$1"
-    debug_log "Assessing intrusion detection and file integrity monitoring for project: $project_id"
+    log_debug "Assessing intrusion detection and file integrity monitoring for project: $project_id"
     
     # Check for Cloud IDS (Intrusion Detection System)
     local ids_instances
@@ -425,19 +426,19 @@ assess_intrusion_detection() {
             
             if [[ "$ids_state" == "READY" ]]; then
                 ((active_ids++))
-                add_check_result "Cloud IDS endpoint" "PASS" \
+                add_check_result "$OUTPUT_FILE" "pass" "Cloud IDS endpoint" \
                     "Cloud IDS endpoint '$ids_name' is active and monitoring"
             else
-                add_check_result "Cloud IDS endpoint" "WARN" \
+                add_check_result "$OUTPUT_FILE" "warning" "Cloud IDS endpoint" \
                     "Cloud IDS endpoint '$ids_name' is in state: $ids_state"
             fi
             
         done <<< "$ids_instances"
         
-        add_check_result "11.5.1 - Intrusion detection system" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "11.5.1 - Intrusion detection system" \
             "Found $active_ids active out of $total_ids Cloud IDS endpoints"
     else
-        add_check_result "11.5.1 - Intrusion detection system" "WARN" \
+        add_check_result "$OUTPUT_FILE" "warning" "11.5.1 - Intrusion detection system" \
             "No Cloud IDS endpoints found - consider implementing network intrusion detection"
     fi
     
@@ -467,16 +468,16 @@ assess_intrusion_detection() {
             
             if [[ -n "$subnets_with_logs" ]]; then
                 ((networks_with_flow_logs++))
-                add_check_result "VPC Flow Logs" "PASS" \
+                add_check_result "$OUTPUT_FILE" "pass" "VPC Flow Logs" \
                     "Network '$network' has flow logs enabled for traffic monitoring"
             else
-                add_check_result "VPC Flow Logs" "WARN" \
+                add_check_result "$OUTPUT_FILE" "warning" "VPC Flow Logs" \
                     "Network '$network' does not have flow logs enabled"
             fi
             
         done <<< "$vpc_networks"
         
-        add_check_result "Network traffic monitoring" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "Network traffic monitoring" \
             "$networks_with_flow_logs out of $total_networks networks have flow logs enabled"
     fi
     
@@ -491,10 +492,10 @@ assess_intrusion_detection() {
         2>/dev/null)
     
     if [[ -n "$asset_changes" ]]; then
-        add_check_result "11.5.2 - Asset change monitoring" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "11.5.2 - Asset change monitoring" \
             "Cloud Asset Inventory is tracking resource changes (equivalent to file integrity monitoring)"
     else
-        add_check_result "11.5.2 - Asset change monitoring" "WARN" \
+        add_check_result "$OUTPUT_FILE" "warning" "11.5.2 - Asset change monitoring" \
             "No recent asset change monitoring activity found"
     fi
     
@@ -508,10 +509,10 @@ assess_intrusion_detection() {
     
     if [[ -n "$threat_detection" ]]; then
         local threat_count=$(echo "$threat_detection" | wc -l)
-        add_check_result "Threat detection monitoring" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Threat detection monitoring" \
             "Security Command Center detected $threat_count threat detection events"
     else
-        add_check_result "Threat detection monitoring" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "Threat detection monitoring" \
             "No threat detection events found in Security Command Center"
     fi
     
@@ -523,10 +524,10 @@ assess_intrusion_detection() {
         2>/dev/null && echo "configured" || echo "not_configured")
     
     if [[ "$binary_auth_policy" == "configured" ]]; then
-        add_check_result "Binary Authorization" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Binary Authorization" \
             "Binary Authorization is configured for container integrity verification"
     else
-        add_check_result "Binary Authorization" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "Binary Authorization" \
             "Binary Authorization not configured - consider for container environments"
     fi
 }
@@ -534,7 +535,7 @@ assess_intrusion_detection() {
 # 11.6 - Payment page change detection
 assess_payment_page_monitoring() {
     local project_id="$1"
-    debug_log "Assessing payment page change detection for project: $project_id"
+    log_debug "Assessing payment page change detection for project: $project_id"
     
     # Check for App Engine applications (web applications)
     local app_engine_apps
@@ -544,7 +545,7 @@ assess_payment_page_monitoring() {
         2>/dev/null)
     
     if [[ -n "$app_engine_apps" ]]; then
-        add_check_result "Web application platform" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "Web application platform" \
             "App Engine application found - ensure payment page monitoring is implemented"
         
         # Check for Cloud CDN (might indicate web application)
@@ -556,7 +557,7 @@ assess_payment_page_monitoring() {
             2>/dev/null)
         
         if [[ -n "$cdn_backends" ]]; then
-            add_check_result "CDN configuration" "INFO" \
+            add_check_result "$OUTPUT_FILE" "info" "CDN configuration" \
                 "Cloud CDN detected - ensure payment page change monitoring covers CDN content"
         fi
     fi
@@ -570,12 +571,12 @@ assess_payment_page_monitoring() {
     
     if [[ -n "$load_balancers" ]]; then
         local lb_count=$(echo "$load_balancers" | wc -l)
-        add_check_result "Load balancer configuration" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "Load balancer configuration" \
             "Found $lb_count load balancers - ensure payment page monitoring covers all endpoints"
     fi
     
     # 11.6.1 - Change and tamper detection mechanism
-    add_check_result "11.6.1 - Payment page change detection" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "11.6.1 - Payment page change detection" \
         "Verify change and tamper detection mechanism is deployed for payment pages"
     
     # Check for Cloud Functions that might handle payment processing
@@ -586,7 +587,7 @@ assess_payment_page_monitoring() {
         2>/dev/null | grep -i -E "(payment|checkout|billing)")
     
     if [[ -n "$payment_functions" ]]; then
-        add_check_result "Payment processing functions" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "Payment processing functions" \
             "Found Cloud Functions that may handle payment processing - ensure monitoring is configured"
     fi
     
@@ -599,22 +600,22 @@ assess_payment_page_monitoring() {
     
     if [[ -n "$cloud_run_services" ]]; then
         local service_count=$(echo "$cloud_run_services" | wc -l)
-        add_check_result "Cloud Run services" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "Cloud Run services" \
             "Found $service_count Cloud Run services - ensure payment page monitoring if applicable"
     fi
     
     # Manual verification guidance for payment page monitoring
-    add_check_result "Payment page monitoring implementation" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "Payment page monitoring implementation" \
         "If processing payments: Implement monitoring for HTTP headers and script contents of payment pages"
     
-    add_check_result "Payment page monitoring frequency" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "Payment page monitoring frequency" \
         "Verify payment page monitoring performs evaluations at least weekly or per risk analysis"
 }
 
 # Assessment for cloud-specific security testing
 assess_cloud_security_testing() {
     local project_id="$1"
-    debug_log "Assessing cloud-specific security testing for project: $project_id"
+    log_debug "Assessing cloud-specific security testing for project: $project_id"
     
     # Check for Cloud Security Scanner
     local security_scanner_logs
@@ -626,10 +627,10 @@ assess_cloud_security_testing() {
         2>/dev/null)
     
     if [[ -n "$security_scanner_logs" ]]; then
-        add_check_result "Cloud Security Scanner" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Cloud Security Scanner" \
             "Web Security Scanner is being used for automated security testing"
     else
-        add_check_result "Cloud Security Scanner" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "Cloud Security Scanner" \
             "No Web Security Scanner activity found - consider for web application testing"
     fi
     
@@ -642,10 +643,10 @@ assess_cloud_security_testing() {
         2>/dev/null)
     
     if [[ -n "$etd_findings" ]]; then
-        add_check_result "Event Threat Detection" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Event Threat Detection" \
             "Event Threat Detection is active and generating findings"
     else
-        add_check_result "Event Threat Detection" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "Event Threat Detection" \
             "No Event Threat Detection findings found"
     fi
     
@@ -658,10 +659,10 @@ assess_cloud_security_testing() {
         2>/dev/null)
     
     if [[ -n "$container_threats" ]]; then
-        add_check_result "Container Threat Detection" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Container Threat Detection" \
             "Container threat detection is identifying potential threats"
     else
-        add_check_result "Container Threat Detection" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "Container Threat Detection" \
             "No container threat findings found"
     fi
     
@@ -674,42 +675,42 @@ assess_cloud_security_testing() {
         2>/dev/null)
     
     if [[ -n "$vm_threats" ]]; then
-        add_check_result "VM Threat Detection" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "VM Threat Detection" \
             "VM threat detection is identifying anomalous activities"
     else
-        add_check_result "VM Threat Detection" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "VM Threat Detection" \
             "No VM threat detection findings found"
     fi
 }
 
 # Manual verification guidance
 add_manual_verification_guidance() {
-    debug_log "Adding manual verification guidance"
+    log_debug "Adding manual verification guidance"
     
-    add_section "manual_verification" "Manual Verification Required" "Security testing controls requiring manual assessment"
+    add_section "$OUTPUT_FILE" "manual_verification" "Manual Verification Required" "Security testing controls requiring manual assessment"
     
-    add_check_result "11.1 - Security testing policy" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "11.1 - Security testing policy" \
         "Verify documented processes for regularly testing security of systems and networks"
     
-    add_check_result "11.2 - Wireless access point testing" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "11.2 - Wireless access point testing" \
         "For physical environments: Test for unauthorized wireless access points quarterly"
     
-    add_check_result "11.3 - Vulnerability scanning schedule" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "11.3 - Vulnerability scanning schedule" \
         "Verify internal vulnerability scans are performed at least quarterly"
     
-    add_check_result "11.4 - Penetration testing program" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "11.4 - Penetration testing program" \
         "Verify penetration testing is performed annually and after significant changes"
     
-    add_check_result "11.5 - IDS/IPS implementation" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "11.5 - IDS/IPS implementation" \
         "Verify intrusion detection/prevention systems monitor network perimeter and critical points"
     
-    add_check_result "11.6 - Payment page monitoring" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "11.6 - Payment page monitoring" \
         "If processing payments: Verify change detection for payment pages is implemented"
     
-    add_check_result "Testing independence" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "Testing independence" \
         "Verify organizational independence of security testers from system administrators"
     
-    add_check_result "Test result documentation" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "Test result documentation" \
         "Verify security testing results and remediation activities are documented and retained"
 }
 
@@ -720,7 +721,7 @@ assess_project() {
     info_log "Assessing project: $project_id"
     
     # Add project section to report
-    add_section "project_$project_id" "Project: $project_id" "Assessment results for project $project_id"
+    add_section "$OUTPUT_FILE" "project_$project_id" "Project: $project_id" "Assessment results for project $project_id"
     
     # Perform assessments
     assess_security_testing_processes "$project_id"
@@ -731,7 +732,7 @@ assess_project() {
     assess_payment_page_monitoring "$project_id"
     assess_cloud_security_testing "$project_id"
     
-    debug_log "Completed assessment for project: $project_id"
+    log_debug "Completed assessment for project: $project_id"
 }
 
 # Main execution

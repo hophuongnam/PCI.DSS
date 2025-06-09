@@ -1,7 +1,0 @@
-                <div class="check-item pass">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong>✓ Basic functionality test</strong>
-                        <span class="pass">PASS</span>
-                    </div>
-                </div>
-

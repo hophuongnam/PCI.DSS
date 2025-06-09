@@ -45,26 +45,27 @@ fi
 setup_assessment_scope "$SCOPE" "$PROJECT_ID" "$ORG_ID"
 
 # Configure HTML report
-initialize_report "PCI DSS Requirement $REQUIREMENT_NUMBER Assessment" "$ASSESSMENT_SCOPE"
+OUTPUT_FILE="${REPORT_DIR}/pci_req${REQUIREMENT_NUMBER}_report_$(date +%Y%m%d_%H%M%S).html"
+initialize_report "$OUTPUT_FILE" "PCI DSS Requirement $REQUIREMENT_NUMBER Assessment" "$REQUIREMENT_NUMBER"
 
 # Add assessment introduction
-add_section "authentication_governance" "Authentication and Identity Management Assessment" "Assessment of user identification and authentication access controls"
+add_section "$OUTPUT_FILE" "authentication_governance" "Authentication and Identity Management Assessment" "Assessment of user identification and authentication access controls"
 
-debug_log "Starting PCI DSS Requirement 8 assessment"
+log_debug "Starting PCI DSS Requirement 8 assessment"
 
 # Core Assessment Functions
 
 # 8.1 - Authentication governance and procedures
 assess_authentication_governance() {
     local project_id="$1"
-    debug_log "Assessing authentication governance for project: $project_id"
+    log_debug "Assessing authentication governance for project: $project_id"
     
     # 8.1.1 - Security policies and operational procedures documentation
-    add_check_result "8.1.1 - Security policies documentation" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "8.1.1 - Security policies documentation" \
         "Verify documented security policies for Requirement 8 are maintained, up to date, in use, and known to affected parties"
     
     # 8.1.2 - Roles and responsibilities documentation
-    add_check_result "8.1.2 - Roles and responsibilities" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "8.1.2 - Roles and responsibilities" \
         "Verify roles and responsibilities for Requirement 8 activities are documented, assigned, and understood"
     
     # Check for automated policy enforcement via Organization Policy
@@ -75,10 +76,10 @@ assess_authentication_governance() {
         --format="value(constraint)" 2>/dev/null || echo "")
     
     if [[ -n "$policy_violations" ]]; then
-        add_check_result "8.1 - Organization policy enforcement" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "8.1 - Organization policy enforcement" \
             "Organization policies detected for authentication governance: $policy_violations"
     else
-        add_check_result "8.1 - Organization policy enforcement" "WARNING" \
+        add_check_result "$OUTPUT_FILE" "warning" "8.1 - Organization policy enforcement" \
             "No organization policies detected for authentication governance. Consider implementing constraints for service account management."
     fi
 }
@@ -86,7 +87,7 @@ assess_authentication_governance() {
 # 8.2 - User identification and account lifecycle management
 assess_user_identification() {
     local project_id="$1"
-    debug_log "Assessing user identification for project: $project_id"
+    log_debug "Assessing user identification for project: $project_id"
     
     # Check Cloud Identity users configuration
     local users
@@ -105,14 +106,14 @@ assess_user_identification() {
         done <<< "$users"
         
         if [[ -n "$shared_accounts" ]]; then
-            add_check_result "8.2.1 - Individual user identification" "WARNING" \
+            add_check_result "$OUTPUT_FILE" "warning" "8.2.1 - Individual user identification" \
                 "Potential shared accounts detected: ${shared_accounts%, }. Verify these accounts comply with individual identification requirements."
         else
-            add_check_result "8.2.1 - Individual user identification" "PASS" \
+            add_check_result "$OUTPUT_FILE" "pass" "8.2.1 - Individual user identification" \
                 "Cloud Identity users appear to follow individual identification practices ($total_users users found)"
         fi
     else
-        add_check_result "8.2.1 - Individual user identification" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "8.2.1 - Individual user identification" \
             "No Cloud Identity users found. Using project-level IAM for user management."
     fi
     
@@ -133,27 +134,27 @@ assess_user_identification() {
             fi
         done <<< "$service_accounts"
         
-        add_check_result "8.2.2 - Service account management" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "8.2.2 - Service account management" \
             "Service accounts found: $sa_count total ($default_sa_count default service accounts)"
         
         if [[ $default_sa_count -gt 0 ]]; then
-            add_check_result "8.2.3 - Default service account usage" "WARNING" \
+            add_check_result "$OUTPUT_FILE" "warning" "8.2.3 - Default service account usage" \
                 "Default service accounts detected. Consider using custom service accounts with minimal permissions."
         fi
     else
-        add_check_result "8.2.2 - Service account management" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "8.2.2 - Service account management" \
             "No service accounts found in project"
     fi
     
     # 8.2.4-8.2.8 - Account lifecycle management (manual verification)
-    add_check_result "8.2.4-8.2.8 - Account lifecycle management" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "8.2.4-8.2.8 - Account lifecycle management" \
         "Verify account provisioning, modification, review, and removal processes are documented and followed"
 }
 
 # 8.3 - Strong authentication factors and policies
 assess_strong_authentication() {
     local project_id="$1"
-    debug_log "Assessing strong authentication for project: $project_id"
+    log_debug "Assessing strong authentication for project: $project_id"
     
     # 8.3.1 - Check password/authentication policies via Organization Policy
     local auth_policies
@@ -163,10 +164,10 @@ assess_strong_authentication() {
         --format="value(constraint)" 2>/dev/null || echo "")
     
     if [[ -n "$auth_policies" ]]; then
-        add_check_result "8.3.1 - Authentication policy enforcement" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "8.3.1 - Authentication policy enforcement" \
             "Organization policy for allowed domains detected: $auth_policies"
     else
-        add_check_result "8.3.1 - Authentication policy enforcement" "WARNING" \
+        add_check_result "$OUTPUT_FILE" "warning" "8.3.1 - Authentication policy enforcement" \
             "No organization policy for domain restrictions detected. Consider implementing allowed policy member domains."
     fi
     
@@ -176,22 +177,22 @@ assess_strong_authentication() {
         --project="$project_id" 2>/dev/null || echo "")
     
     if [[ "$sa_keys_check" == *"rules"* ]]; then
-        add_check_result "8.3.2 - Service account key restrictions" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "8.3.2 - Service account key restrictions" \
             "Service account key creation restrictions are configured"
     else
-        add_check_result "8.3.2 - Service account key restrictions" "WARNING" \
+        add_check_result "$OUTPUT_FILE" "warning" "8.3.2 - Service account key restrictions" \
             "No restrictions on service account key creation detected. Consider disabling key creation where possible."
     fi
     
     # 8.3.3-8.3.11 - Authentication mechanisms (manual verification)
-    add_check_result "8.3.3-8.3.11 - Authentication mechanisms" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "8.3.3-8.3.11 - Authentication mechanisms" \
         "Verify password policies, encryption, transmission security, and authentication factor requirements"
 }
 
 # 8.4-8.5 - Multi-factor authentication implementation and enforcement
 assess_mfa_implementation() {
     local project_id="$1"
-    debug_log "Assessing MFA implementation for project: $project_id"
+    log_debug "Assessing MFA implementation for project: $project_id"
     
     # Check for OS Login configuration
     local os_login_check
@@ -200,10 +201,10 @@ assess_mfa_implementation() {
         --format="value(commonInstanceMetadata.items[key='enable-oslogin'].value)" 2>/dev/null || echo "")
     
     if [[ "$os_login_check" == "TRUE" ]]; then
-        add_check_result "8.4.1 - OS Login MFA configuration" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "8.4.1 - OS Login MFA configuration" \
             "OS Login is enabled, supporting centralized MFA for compute instances"
     else
-        add_check_result "8.4.1 - OS Login MFA configuration" "WARNING" \
+        add_check_result "$OUTPUT_FILE" "warning" "8.4.1 - OS Login MFA configuration" \
             "OS Login is not enabled. Consider enabling for centralized MFA on compute instances."
     fi
     
@@ -212,25 +213,25 @@ assess_mfa_implementation() {
     iap_check=$(gcloud iap web get-iam-policy 2>/dev/null | grep -c "members" || echo "0")
     
     if [[ "$iap_check" -gt 0 ]]; then
-        add_check_result "8.4.2 - Identity-Aware Proxy MFA" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "8.4.2 - Identity-Aware Proxy MFA" \
             "Identity-Aware Proxy configuration detected, supporting application-level MFA"
     else
-        add_check_result "8.4.2 - Identity-Aware Proxy MFA" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "8.4.2 - Identity-Aware Proxy MFA" \
             "No Identity-Aware Proxy configuration detected. Consider IAP for application-level MFA."
     fi
     
     # 8.4.3 and 8.5 - MFA requirements and configuration (manual verification)
-    add_check_result "8.4.3 - MFA for all access to CDE" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "8.4.3 - MFA for all access to CDE" \
         "Verify MFA is implemented for all access to cardholder data environment"
     
-    add_check_result "8.5.1 - MFA system configuration" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "8.5.1 - MFA system configuration" \
         "Verify MFA systems meet replay resistance and factor requirements per PCI DSS"
 }
 
 # 8.6 - System and application account management
 assess_account_management() {
     local project_id="$1"
-    debug_log "Assessing account management for project: $project_id"
+    log_debug "Assessing account management for project: $project_id"
     
     # Check for automated service account management
     local sa_list
@@ -252,10 +253,10 @@ assess_account_management() {
         local documentation_percentage=$((documented_accounts * 100 / total_accounts))
         
         if [[ $documentation_percentage -ge 80 ]]; then
-            add_check_result "8.6.1 - Service account documentation" "PASS" \
+            add_check_result "$OUTPUT_FILE" "pass" "8.6.1 - Service account documentation" \
                 "Service accounts are well documented ($documented_accounts/$total_accounts have descriptions)"
         else
-            add_check_result "8.6.1 - Service account documentation" "WARNING" \
+            add_check_result "$OUTPUT_FILE" "warning" "8.6.1 - Service account documentation" \
                 "Service account documentation needs improvement ($documented_accounts/$total_accounts have descriptions)"
         fi
     fi
@@ -268,24 +269,24 @@ assess_account_management() {
         --format="value(name)" 2>/dev/null || echo "")
     
     if [[ -n "$audit_logs" ]]; then
-        add_check_result "8.6.2 - Authentication event logging" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "8.6.2 - Authentication event logging" \
             "Audit logging sinks detected: $audit_logs"
     else
-        add_check_result "8.6.2 - Authentication event logging" "WARNING" \
+        add_check_result "$OUTPUT_FILE" "warning" "8.6.2 - Authentication event logging" \
             "No audit logging sinks detected. Consider implementing Cloud Audit Logs for authentication monitoring."
     fi
     
     # 8.6.3 - Session management and timeout controls (manual verification)
-    add_check_result "8.6.3 - Session management controls" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "8.6.3 - Session management controls" \
         "Verify session timeout controls (15-minute inactivity timeout) are implemented for all access"
 }
 
 # Main project assessment function
 assess_project() {
     local project_id="$1"
-    debug_log "Starting Requirement 8 assessment for project: $project_id"
+    log_debug "Starting Requirement 8 assessment for project: $project_id"
     
-    add_section "project_assessment" "Project Assessment: $project_id" "Detailed assessment of authentication and identity management controls"
+    add_section "$OUTPUT_FILE" "project_assessment" "Project Assessment: $project_id" "Detailed assessment of authentication and identity management controls"
     
     # Run all assessment functions
     assess_authentication_governance "$project_id"
@@ -294,13 +295,13 @@ assess_project() {
     assess_mfa_implementation "$project_id"
     assess_account_management "$project_id"
     
-    debug_log "Completed Requirement 8 assessment for project: $project_id"
+    log_debug "Completed Requirement 8 assessment for project: $project_id"
 }
 
 # Execute assessment based on scope
 if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
     # Organization-wide assessment
-    debug_log "Starting organization-wide assessment for org: $ORG_ID"
+    log_debug "Starting organization-wide assessment for org: $ORG_ID"
     
     # Get all projects in organization
     projects=$(get_projects_in_scope)
@@ -316,7 +317,7 @@ if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
     
 else
     # Single project assessment
-    debug_log "Starting single project assessment for: $PROJECT_ID"
+    log_debug "Starting single project assessment for: $PROJECT_ID"
     assess_project "$PROJECT_ID"
 fi
 
@@ -343,9 +344,9 @@ manual_requirements="
 </ul>
 "
 
-add_section "manual_verification" "Manual Verification Requirements" "$manual_requirements"
+add_section "$OUTPUT_FILE" "manual_verification" "Manual Verification Requirements" "$manual_requirements"
 
 # Finalize the report
-finalize_report
+finalize_report "$OUTPUT_FILE"
 
-debug_log "PCI DSS Requirement 8 assessment completed"
+log_debug "PCI DSS Requirement 8 assessment completed"

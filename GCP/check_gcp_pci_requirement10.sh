@@ -42,18 +42,18 @@ OUTPUT_FILE="${REPORT_DIR}/pci_req${REQUIREMENT_NUMBER}_report_$(date +%Y%m%d_%H
 # Initialize HTML report using shared library
 initialize_report "$OUTPUT_FILE" "PCI DSS 4.0.1 - Requirement $REQUIREMENT_NUMBER Compliance Assessment Report" "${REQUIREMENT_NUMBER}"
 
-print_status "INFO" "============================================="
-print_status "INFO" "  PCI DSS 4.0.1 - Requirement 10 (GCP)"
-print_status "INFO" "============================================="
+print_status "info" "============================================="
+print_status "info" "  PCI DSS 4.0.1 - Requirement 10 (GCP)"
+print_status "info" "============================================="
 echo ""
 
 # Display scope information using shared library
 # Display scope information using shared library - now handled in print_status calls
-print_status "INFO" "Assessment scope: ${ASSESSMENT_SCOPE:-project}"
+print_status "info" "Assessment scope: ${ASSESSMENT_SCOPE:-project}"
 if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
-    print_status "INFO" "Organization ID: ${ORG_ID}"
+    print_status "info" "Organization ID: ${ORG_ID}"
 else
-    print_status "INFO" "Project ID: ${PROJECT_ID}"
+    print_status "info" "Project ID: ${PROJECT_ID}"
 fi
 
 echo ""
@@ -124,26 +124,27 @@ fi
 setup_assessment_scope "$SCOPE" "$PROJECT_ID" "$ORG_ID"
 
 # Configure HTML report
-initialize_report "PCI DSS Requirement $REQUIREMENT_NUMBER Assessment" "$ASSESSMENT_SCOPE"
+OUTPUT_FILE="${REPORT_DIR}/pci_req${REQUIREMENT_NUMBER}_report_$(date +%Y%m%d_%H%M%S).html"
+initialize_report "$OUTPUT_FILE" "PCI DSS Requirement $REQUIREMENT_NUMBER Assessment" "$REQUIREMENT_NUMBER"
 
 # Add assessment introduction
-add_section "logging_monitoring" "Logging and Monitoring Assessment" "Assessment of audit logging and monitoring controls"
+add_section "$OUTPUT_FILE" "logging_monitoring" "Logging and Monitoring Assessment" "Assessment of audit logging and monitoring controls"
 
-debug_log "Starting PCI DSS Requirement 10 assessment"
+log_debug "Starting PCI DSS Requirement 10 assessment"
 
 # Core Assessment Functions
 
 # 10.1 - Processes and mechanisms for logging and monitoring
 assess_logging_processes() {
     local project_id="$1"
-    debug_log "Assessing logging processes for project: $project_id"
+    log_debug "Assessing logging processes for project: $project_id"
     
     # 10.1.1 - Security policies and operational procedures documentation
-    add_check_result "10.1.1 - Security policies documentation" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "10.1.1 - Security policies documentation" \
         "Verify documented security policies for Requirement 10 are maintained, up to date, in use, and known to affected parties"
     
     # 10.1.2 - Roles and responsibilities documentation
-    add_check_result "10.1.2 - Roles and responsibilities" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "10.1.2 - Roles and responsibilities" \
         "Verify roles and responsibilities for Requirement 10 activities are documented, assigned, and understood"
     
     # Check if Cloud Logging is enabled
@@ -155,10 +156,10 @@ assess_logging_processes() {
         2>/dev/null)
     
     if [[ -n "$logging_enabled" ]]; then
-        add_check_result "Cloud Logging enabled" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Cloud Logging enabled" \
             "Cloud Logging is enabled and operational in project $project_id"
     else
-        add_check_result "Cloud Logging enabled" "FAIL" \
+        add_check_result "$OUTPUT_FILE" "fail" "Cloud Logging enabled" \
             "Cloud Logging appears to be disabled or inaccessible in project $project_id"
     fi
     
@@ -172,10 +173,10 @@ assess_logging_processes() {
     
     if [[ -n "$audit_logs" ]]; then
         local audit_count=$(echo "$audit_logs" | wc -l)
-        add_check_result "Audit logs configuration" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Audit logs configuration" \
             "Found $audit_count audit log streams configured in project $project_id"
     else
-        add_check_result "Audit logs configuration" "FAIL" \
+        add_check_result "$OUTPUT_FILE" "fail" "Audit logs configuration" \
             "No audit logs found - critical for PCI DSS compliance"
     fi
 }
@@ -183,7 +184,7 @@ assess_logging_processes() {
 # 10.2 - Audit logs implementation
 assess_audit_log_implementation() {
     local project_id="$1"
-    debug_log "Assessing audit log implementation for project: $project_id"
+    log_debug "Assessing audit log implementation for project: $project_id"
     
     # Check for comprehensive audit logging
     local audit_types=("data_access" "admin_activity" "system_events")
@@ -200,10 +201,10 @@ assess_audit_log_implementation() {
         
         if [[ -n "$audit_entries" ]]; then
             ((configured_audits++))
-            add_check_result "Audit logging - $audit_type" "PASS" \
+            add_check_result "$OUTPUT_FILE" "pass" "Audit logging - $audit_type" \
                 "Audit logging for $audit_type is active"
         else
-            add_check_result "Audit logging - $audit_type" "WARN" \
+            add_check_result "$OUTPUT_FILE" "warning" "Audit logging - $audit_type" \
                 "No recent $audit_type audit logs found"
         fi
     done
@@ -219,10 +220,10 @@ assess_audit_log_implementation() {
     
     if [[ -n "$user_access_logs" ]]; then
         local log_count=$(echo "$user_access_logs" | wc -l)
-        add_check_result "10.2.1 - User access logging" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "10.2.1 - User access logging" \
             "Found $log_count user access events logged"
     else
-        add_check_result "10.2.1 - User access logging" "WARN" \
+        add_check_result "$OUTPUT_FILE" "warning" "10.2.1 - User access logging" \
             "No recent user access logs found - verify if cardholder data access is occurring"
     fi
     
@@ -237,10 +238,10 @@ assess_audit_log_implementation() {
     
     if [[ -n "$admin_logs" ]]; then
         local admin_count=$(echo "$admin_logs" | wc -l)
-        add_check_result "10.2.1.2 - Administrative actions" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "10.2.1.2 - Administrative actions" \
             "Found $admin_count administrative actions logged"
     else
-        add_check_result "10.2.1.2 - Administrative actions" "WARN" \
+        add_check_result "$OUTPUT_FILE" "warning" "10.2.1.2 - Administrative actions" \
             "No recent administrative actions logged"
     fi
     
@@ -254,10 +255,10 @@ assess_audit_log_implementation() {
         2>/dev/null)
     
     if [[ -n "$audit_access_logs" ]]; then
-        add_check_result "10.2.1.3 - Audit log access" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "10.2.1.3 - Audit log access" \
             "Audit log access is being logged"
     else
-        add_check_result "10.2.1.3 - Audit log access" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "10.2.1.3 - Audit log access" \
             "No recent audit log access events found"
     fi
     
@@ -271,10 +272,10 @@ assess_audit_log_implementation() {
         2>/dev/null)
     
     if [[ -n "$failed_auth_logs" ]]; then
-        add_check_result "10.2.1.4 - Failed access attempts" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "10.2.1.4 - Failed access attempts" \
             "Failed access attempts are being logged"
     else
-        add_check_result "10.2.1.4 - Failed access attempts" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "10.2.1.4 - Failed access attempts" \
             "No recent failed access attempts logged"
     fi
     
@@ -288,10 +289,10 @@ assess_audit_log_implementation() {
         2>/dev/null)
     
     if [[ -n "$credential_changes" ]]; then
-        add_check_result "10.2.1.5 - Credential changes" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "10.2.1.5 - Credential changes" \
             "Authentication credential changes are being logged"
     else
-        add_check_result "10.2.1.5 - Credential changes" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "10.2.1.5 - Credential changes" \
             "No recent credential changes logged"
     fi
     
@@ -305,10 +306,10 @@ assess_audit_log_implementation() {
         2>/dev/null)
     
     if [[ -n "$log_config_changes" ]]; then
-        add_check_result "10.2.1.6 - Audit log management" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "10.2.1.6 - Audit log management" \
             "Audit log configuration changes are being logged"
     else
-        add_check_result "10.2.1.6 - Audit log management" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "10.2.1.6 - Audit log management" \
             "No recent audit log configuration changes"
     fi
     
@@ -323,10 +324,10 @@ assess_audit_log_implementation() {
     
     if [[ -n "$system_changes" ]]; then
         local change_count=$(echo "$system_changes" | wc -l)
-        add_check_result "10.2.1.7 - System object changes" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "10.2.1.7 - System object changes" \
             "Found $change_count system-level object changes logged"
     else
-        add_check_result "10.2.1.7 - System object changes" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "10.2.1.7 - System object changes" \
             "No recent system-level object changes logged"
     fi
     
@@ -353,14 +354,14 @@ assess_audit_log_implementation() {
         [[ -n "$has_source" ]] && ((required_fields++))
         
         if [[ $required_fields -ge 4 ]]; then
-            add_check_result "10.2.2 - Audit log detail completeness" "PASS" \
+            add_check_result "$OUTPUT_FILE" "pass" "10.2.2 - Audit log detail completeness" \
                 "Audit logs contain required details (user ID, timestamp, event type, source)"
         else
-            add_check_result "10.2.2 - Audit log detail completeness" "WARN" \
+            add_check_result "$OUTPUT_FILE" "warning" "10.2.2 - Audit log detail completeness" \
                 "Audit logs missing some required details ($required_fields/4 fields present)"
         fi
     else
-        add_check_result "10.2.2 - Audit log detail completeness" "WARN" \
+        add_check_result "$OUTPUT_FILE" "warning" "10.2.2 - Audit log detail completeness" \
             "Unable to verify audit log detail completeness"
     fi
 }
@@ -368,7 +369,7 @@ assess_audit_log_implementation() {
 # 10.3 - Audit log protection
 assess_audit_log_protection() {
     local project_id="$1"
-    debug_log "Assessing audit log protection for project: $project_id"
+    log_debug "Assessing audit log protection for project: $project_id"
     
     # Check for log sinks and export destinations
     local log_sinks
@@ -378,11 +379,11 @@ assess_audit_log_protection() {
         2>/dev/null)
     
     if [[ -z "$log_sinks" ]]; then
-        add_check_result "10.3 - Log export/backup" "WARN" \
+        add_check_result "$OUTPUT_FILE" "warning" "10.3 - Log export/backup" \
             "No log sinks configured - consider exporting logs for backup and long-term retention"
     else
         local sink_count=$(echo "$log_sinks" | wc -l)
-        add_check_result "10.3.3 - Log backup" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "10.3.3 - Log backup" \
             "Found $sink_count log sinks configured for log export/backup"
         
         # Check sink destinations
@@ -393,13 +394,13 @@ assess_audit_log_protection() {
             local destination=$(echo "$sink" | cut -d$'\t' -f2)
             
             if [[ "$destination" == storage.googleapis.com* ]]; then
-                add_check_result "Log sink security" "PASS" \
+                add_check_result "$OUTPUT_FILE" "pass" "Log sink security" \
                     "Sink '$sink_name' exports to secure Cloud Storage"
             elif [[ "$destination" == bigquery.googleapis.com* ]]; then
-                add_check_result "Log sink security" "PASS" \
+                add_check_result "$OUTPUT_FILE" "pass" "Log sink security" \
                     "Sink '$sink_name' exports to BigQuery for analysis"
             else
-                add_check_result "Log sink destination" "INFO" \
+                add_check_result "$OUTPUT_FILE" "info" "Log sink destination" \
                     "Sink '$sink_name' exports to: $destination"
             fi
             
@@ -417,16 +418,16 @@ assess_audit_log_protection() {
         logging_viewers=$(echo "$iam_policy" | jq -r '.bindings[] | select(.role | contains("logging")) | .members[]' 2>/dev/null | wc -l)
         
         if [[ $logging_viewers -lt 10 ]]; then
-            add_check_result "10.3.1 - Log access restriction" "PASS" \
+            add_check_result "$OUTPUT_FILE" "pass" "10.3.1 - Log access restriction" \
                 "Limited number of users ($logging_viewers) have logging access"
         else
-            add_check_result "10.3.1 - Log access restriction" "WARN" \
+            add_check_result "$OUTPUT_FILE" "warning" "10.3.1 - Log access restriction" \
                 "High number of users ($logging_viewers) have logging access - review access controls"
         fi
     fi
     
     # 10.3.2 - Protection from modification
-    add_check_result "10.3.2 - Log immutability" "PASS" \
+    add_check_result "$OUTPUT_FILE" "pass" "10.3.2 - Log immutability" \
         "Cloud Logging provides built-in log immutability - logs cannot be modified after creation"
     
     # 10.3.4 - File integrity monitoring
@@ -439,10 +440,10 @@ assess_audit_log_protection() {
         2>/dev/null)
     
     if [[ -n "$log_access_monitoring" ]]; then
-        add_check_result "10.3.4 - Log access monitoring" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "10.3.4 - Log access monitoring" \
             "Log access and changes are being monitored"
     else
-        add_check_result "10.3.4 - Log access monitoring" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "10.3.4 - Log access monitoring" \
             "No recent log access events found"
     fi
 }
@@ -450,7 +451,7 @@ assess_audit_log_protection() {
 # 10.4 - Audit log review
 assess_audit_log_review() {
     local project_id="$1"
-    debug_log "Assessing audit log review for project: $project_id"
+    log_debug "Assessing audit log review for project: $project_id"
     
     # Check for monitoring and alerting policies
     local alert_policies
@@ -460,7 +461,7 @@ assess_audit_log_review() {
         2>/dev/null)
     
     if [[ -z "$alert_policies" ]]; then
-        add_check_result "10.4 - Automated log review" "WARN" \
+        add_check_result "$OUTPUT_FILE" "warning" "10.4 - Automated log review" \
             "No monitoring alert policies found - consider implementing automated log analysis"
     else
         local enabled_policies=0
@@ -475,16 +476,16 @@ assess_audit_log_review() {
             
             if [[ "$enabled" == "True" ]]; then
                 ((enabled_policies++))
-                add_check_result "Alert policy status" "PASS" \
+                add_check_result "$OUTPUT_FILE" "pass" "Alert policy status" \
                     "Policy '$policy_name' is enabled for monitoring"
             else
-                add_check_result "Alert policy status" "WARN" \
+                add_check_result "$OUTPUT_FILE" "warning" "Alert policy status" \
                     "Policy '$policy_name' is disabled"
             fi
             
         done <<< "$alert_policies"
         
-        add_check_result "10.4.1.1 - Automated mechanisms" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "10.4.1.1 - Automated mechanisms" \
             "Found $enabled_policies enabled out of $total_policies monitoring policies"
     fi
     
@@ -497,30 +498,30 @@ assess_audit_log_review() {
     
     if [[ -n "$notification_channels" ]]; then
         local channel_count=$(echo "$notification_channels" | wc -l)
-        add_check_result "Alert notification channels" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Alert notification channels" \
             "Found $channel_count notification channels configured"
     else
-        add_check_result "Alert notification channels" "WARN" \
+        add_check_result "$OUTPUT_FILE" "warning" "Alert notification channels" \
             "No notification channels found - alerts may not be delivered"
     fi
     
     # 10.4.1 - Daily security event review
-    add_check_result "10.4.1 - Daily log review" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "10.4.1 - Daily log review" \
         "Verify that security events and critical system logs are reviewed at least once daily"
     
     # 10.4.2 - Periodic review of other logs
-    add_check_result "10.4.2 - Periodic log review" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "10.4.2 - Periodic log review" \
         "Verify that other system component logs are reviewed periodically per risk analysis"
     
     # 10.4.3 - Exception handling
-    add_check_result "10.4.3 - Exception handling" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "10.4.3 - Exception handling" \
         "Verify that exceptions and anomalies identified during review are addressed"
 }
 
 # 10.5 - Audit log retention
 assess_audit_log_retention() {
     local project_id="$1"
-    debug_log "Assessing audit log retention for project: $project_id"
+    log_debug "Assessing audit log retention for project: $project_id"
     
     # Check log retention settings
     local log_retention_info
@@ -530,7 +531,7 @@ assess_audit_log_retention() {
         2>/dev/null | head -5)
     
     if [[ -n "$log_retention_info" ]]; then
-        add_check_result "10.5.1 - Log retention baseline" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "10.5.1 - Log retention baseline" \
             "Cloud Logging default retention is 30 days - verify if additional retention is configured"
         
         # Check for long-term storage via sinks
@@ -541,10 +542,10 @@ assess_audit_log_retention() {
             2>/dev/null | grep -E "(storage|bigquery)")
         
         if [[ -n "$long_term_sinks" ]]; then
-            add_check_result "10.5.1 - Long-term retention" "PASS" \
+            add_check_result "$OUTPUT_FILE" "pass" "10.5.1 - Long-term retention" \
                 "Log sinks configured for long-term retention beyond 30 days"
         else
-            add_check_result "10.5.1 - Long-term retention" "WARN" \
+            add_check_result "$OUTPUT_FILE" "warning" "10.5.1 - Long-term retention" \
                 "No long-term retention sinks found - may not meet 12-month retention requirement"
         fi
         
@@ -565,29 +566,29 @@ assess_audit_log_retention() {
                     2>/dev/null)
                 
                 if [[ -n "$lifecycle_policy" ]]; then
-                    add_check_result "Storage bucket retention" "PASS" \
+                    add_check_result "$OUTPUT_FILE" "pass" "Storage bucket retention" \
                         "Bucket '$bucket' has lifecycle policy configured"
                 else
-                    add_check_result "Storage bucket retention" "WARN" \
+                    add_check_result "$OUTPUT_FILE" "warning" "Storage bucket retention" \
                         "Bucket '$bucket' lacks lifecycle policy for retention management"
                 fi
                 
             done <<< "$storage_buckets"
         fi
     else
-        add_check_result "10.5.1 - Log retention" "FAIL" \
+        add_check_result "$OUTPUT_FILE" "fail" "10.5.1 - Log retention" \
             "Unable to verify log retention configuration"
     fi
     
     # Manual verification guidance
-    add_check_result "Log retention verification" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "Log retention verification" \
         "Verify that audit logs are retained for at least 12 months with 3 months immediately available"
 }
 
 # 10.6 - Time synchronization
 assess_time_synchronization() {
     local project_id="$1"
-    debug_log "Assessing time synchronization for project: $project_id"
+    log_debug "Assessing time synchronization for project: $project_id"
     
     # Check Compute Engine instances for NTP configuration
     local instances
@@ -597,30 +598,30 @@ assess_time_synchronization() {
         2>/dev/null)
     
     if [[ -z "$instances" ]]; then
-        add_check_result "10.6 - Time synchronization" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "10.6 - Time synchronization" \
             "No Compute Engine instances found to assess NTP configuration"
     else
         local instance_count=$(echo "$instances" | wc -l)
-        add_check_result "10.6.1 - Time synchronization technology" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "10.6.1 - Time synchronization technology" \
             "Google Cloud provides automatic time synchronization for $instance_count instances"
         
         # Google Cloud instances use Google's time servers by default
-        add_check_result "10.6.2 - Centralized time servers" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "10.6.2 - Centralized time servers" \
             "Google Cloud instances automatically sync with Google's authoritative time servers"
         
-        add_check_result "10.6.3 - Time data protection" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "10.6.3 - Time data protection" \
             "Google Cloud manages time synchronization security - instances cannot modify time service"
     fi
     
     # Check for any custom time server configurations
-    add_check_result "Custom time server check" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "Custom time server check" \
         "If using custom NTP servers, verify they are properly configured and secured"
 }
 
 # 10.7 - Security control failure detection
 assess_security_control_monitoring() {
     local project_id="$1"
-    debug_log "Assessing security control monitoring for project: $project_id"
+    log_debug "Assessing security control monitoring for project: $project_id"
     
     # Check for monitoring of critical security systems
     local security_monitoring_policies
@@ -643,19 +644,19 @@ assess_security_control_monitoring() {
             
             if [[ "$enabled" == "True" ]]; then
                 ((enabled_count++))
-                add_check_result "Security monitoring policy" "PASS" \
+                add_check_result "$OUTPUT_FILE" "pass" "Security monitoring policy" \
                     "Security monitoring policy '$policy_name' is active"
             else
-                add_check_result "Security monitoring policy" "WARN" \
+                add_check_result "$OUTPUT_FILE" "warning" "Security monitoring policy" \
                     "Security monitoring policy '$policy_name' is disabled"
             fi
             
         done <<< "$security_monitoring_policies"
         
-        add_check_result "10.7.2 - Critical security control monitoring" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "10.7.2 - Critical security control monitoring" \
             "Found $enabled_count enabled out of $total_count security monitoring policies"
     else
-        add_check_result "10.7.2 - Critical security control monitoring" "WARN" \
+        add_check_result "$OUTPUT_FILE" "warning" "10.7.2 - Critical security control monitoring" \
             "No security-specific monitoring policies found"
     fi
     
@@ -670,15 +671,15 @@ assess_security_control_monitoring() {
     
     if [[ -n "$scc_findings" ]]; then
         local finding_count=$(echo "$scc_findings" | wc -l)
-        add_check_result "Security Command Center monitoring" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Security Command Center monitoring" \
             "Security Command Center is active with $finding_count findings to review"
     else
-        add_check_result "Security Command Center monitoring" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "Security Command Center monitoring" \
             "No active Security Command Center findings - system may be secure or SCC not configured"
     fi
     
     # 10.7.3 - Response to security failures
-    add_check_result "10.7.3 - Security failure response" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "10.7.3 - Security failure response" \
         "Verify documented procedures exist for responding to security control failures"
     
     # Check for incident response automation
@@ -689,36 +690,36 @@ assess_security_control_monitoring() {
         2>/dev/null | grep -i -E "(incident|response|alert)")
     
     if [[ -n "$cloud_functions" ]]; then
-        add_check_result "Automated incident response" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Automated incident response" \
             "Found Cloud Functions that may provide automated incident response capabilities"
     else
-        add_check_result "Automated incident response" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "Automated incident response" \
             "No automated incident response functions detected"
     fi
 }
 
 # Manual verification guidance
 add_manual_verification_guidance() {
-    debug_log "Adding manual verification guidance"
+    log_debug "Adding manual verification guidance"
     
-    add_section "manual_verification" "Manual Verification Required" "Logging and monitoring controls requiring manual assessment"
+    add_section "$OUTPUT_FILE" "manual_verification" "Manual Verification Required" "Logging and monitoring controls requiring manual assessment"
     
-    add_check_result "10.1 - Logging policy documentation" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "10.1 - Logging policy documentation" \
         "Verify documented processes and mechanisms for logging and monitoring are defined and understood"
     
-    add_check_result "10.4 - Daily log review procedures" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "10.4 - Daily log review procedures" \
         "Verify that security events are reviewed at least once daily by appropriate personnel"
     
-    add_check_result "10.5 - Log retention compliance" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "10.5 - Log retention compliance" \
         "Verify that audit logs are retained for at least 12 months with 3 months immediately available"
     
-    add_check_result "10.7 - Incident response procedures" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "10.7 - Incident response procedures" \
         "Verify documented procedures for detecting, reporting, and responding to security control failures"
     
-    add_check_result "Log review effectiveness" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "Log review effectiveness" \
         "Verify that log review processes effectively identify anomalies and suspicious activity"
     
-    add_check_result "Time synchronization verification" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "Time synchronization verification" \
         "For custom environments, verify all systems have consistent time synchronization"
 }
 
@@ -729,7 +730,7 @@ assess_project() {
     info_log "Assessing project: $project_id"
     
     # Add project section to report
-    add_section "project_$project_id" "Project: $project_id" "Assessment results for project $project_id"
+    add_section "$OUTPUT_FILE" "project_$project_id" "Project: $project_id" "Assessment results for project $project_id"
     
     # Perform assessments
     assess_logging_processes "$project_id"
@@ -740,7 +741,7 @@ assess_project() {
     assess_time_synchronization "$project_id"
     assess_security_control_monitoring "$project_id"
     
-    debug_log "Completed assessment for project: $project_id"
+    log_debug "Completed assessment for project: $project_id"
 }
 
 # Main execution

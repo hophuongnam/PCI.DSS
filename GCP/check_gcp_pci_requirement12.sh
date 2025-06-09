@@ -42,18 +42,18 @@ OUTPUT_FILE="${REPORT_DIR}/pci_req${REQUIREMENT_NUMBER}_report_$(date +%Y%m%d_%H
 # Initialize HTML report using shared library
 initialize_report "$OUTPUT_FILE" "PCI DSS 4.0.1 - Requirement $REQUIREMENT_NUMBER Compliance Assessment Report" "${REQUIREMENT_NUMBER}"
 
-print_status "INFO" "============================================="
-print_status "INFO" "  PCI DSS 4.0.1 - Requirement 12 (GCP)"
-print_status "INFO" "============================================="
+print_status "info" "============================================="
+print_status "info" "  PCI DSS 4.0.1 - Requirement 12 (GCP)"
+print_status "info" "============================================="
 echo ""
 
 # Display scope information using shared library
 # Display scope information using shared library - now handled in print_status calls
-print_status "INFO" "Assessment scope: ${ASSESSMENT_SCOPE:-project}"
+print_status "info" "Assessment scope: ${ASSESSMENT_SCOPE:-project}"
 if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
-    print_status "INFO" "Organization ID: ${ORG_ID}"
+    print_status "info" "Organization ID: ${ORG_ID}"
 else
-    print_status "INFO" "Project ID: ${PROJECT_ID}"
+    print_status "info" "Project ID: ${PROJECT_ID}"
 fi
 
 echo ""
@@ -126,34 +126,35 @@ fi
 setup_assessment_scope "$SCOPE" "$PROJECT_ID" "$ORG_ID"
 
 # Configure HTML report
-initialize_report "PCI DSS Requirement $REQUIREMENT_NUMBER Assessment" "$ASSESSMENT_SCOPE"
+OUTPUT_FILE="${REPORT_DIR}/pci_req${REQUIREMENT_NUMBER}_report_$(date +%Y%m%d_%H%M%S).html"
+initialize_report "$OUTPUT_FILE" "PCI DSS Requirement $REQUIREMENT_NUMBER Assessment" "$REQUIREMENT_NUMBER"
 
 # Add assessment introduction
-add_section "organizational_policies" "Organizational Policies and Programs Assessment" "Assessment of information security policies and organizational controls"
+add_section "$OUTPUT_FILE" "organizational_policies" "Organizational Policies and Programs Assessment" "Assessment of information security policies and organizational controls"
 
-debug_log "Starting PCI DSS Requirement 12 assessment"
+log_debug "Starting PCI DSS Requirement 12 assessment"
 
 # Core Assessment Functions
 
 # 12.1 - Comprehensive information security policy
 assess_information_security_policy() {
     local project_id="$1"
-    debug_log "Assessing information security policy for project: $project_id"
+    log_debug "Assessing information security policy for project: $project_id"
     
     # 12.1.1 - Security policy establishment and dissemination
-    add_check_result "12.1.1 - Security policy documentation" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.1.1 - Security policy documentation" \
         "Verify overall information security policy is established, published, maintained, and disseminated to all relevant personnel"
     
     # 12.1.2 - Policy review and updates
-    add_check_result "12.1.2 - Policy review schedule" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.1.2 - Policy review schedule" \
         "Verify information security policy is reviewed at least once every 12 months and updated as needed"
     
     # 12.1.3 - Security roles and responsibilities
-    add_check_result "12.1.3 - Security roles definition" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.1.3 - Security roles definition" \
         "Verify security policy defines information security roles and responsibilities for all personnel"
     
     # 12.1.4 - CISO or security executive assignment
-    add_check_result "12.1.4 - Security executive assignment" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.1.4 - Security executive assignment" \
         "Verify responsibility for information security is formally assigned to a CISO or security-knowledgeable executive"
     
     # Check for organization-level policies that support security governance
@@ -165,7 +166,7 @@ assess_information_security_policy() {
     
     if [[ -n "$org_policies" ]]; then
         local policy_count=$(echo "$org_policies" | wc -l)
-        add_check_result "Organization policy framework" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Organization policy framework" \
             "Found $policy_count organization policies providing governance structure"
         
         # Check for security-related policies
@@ -173,14 +174,14 @@ assess_information_security_policy() {
         security_policies=$(echo "$org_policies" | grep -i -E "(security|iam|compute|storage)" | wc -l)
         
         if [[ $security_policies -gt 0 ]]; then
-            add_check_result "Security-focused policies" "PASS" \
+            add_check_result "$OUTPUT_FILE" "pass" "Security-focused policies" \
                 "Found $security_policies security-related organization policies"
         else
-            add_check_result "Security-focused policies" "WARN" \
+            add_check_result "$OUTPUT_FILE" "warning" "Security-focused policies" \
                 "No security-specific organization policies found"
         fi
     else
-        add_check_result "Organization policy framework" "WARN" \
+        add_check_result "$OUTPUT_FILE" "warning" "Organization policy framework" \
             "No organization policies found - consider implementing organizational policy constraints"
     fi
     
@@ -191,10 +192,10 @@ assess_information_security_policy() {
         jq -r '.bindings[] | select(.condition != null) | .condition.title' 2>/dev/null | wc -l)
     
     if [[ $iam_conditions -gt 0 ]]; then
-        add_check_result "Conditional IAM policies" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Conditional IAM policies" \
             "Found $iam_conditions conditional IAM policies supporting security governance"
     else
-        add_check_result "Conditional IAM policies" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "Conditional IAM policies" \
             "No conditional IAM policies found - consider using for enhanced access control"
     fi
 }
@@ -202,10 +203,10 @@ assess_information_security_policy() {
 # 12.2 - Acceptable use policies for end-user technologies
 assess_acceptable_use_policies() {
     local project_id="$1"
-    debug_log "Assessing acceptable use policies for project: $project_id"
+    log_debug "Assessing acceptable use policies for project: $project_id"
     
     # 12.2.1 - End-user technology policies
-    add_check_result "12.2.1 - Acceptable use policies" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.2.1 - Acceptable use policies" \
         "Verify acceptable use policies for end-user technologies are documented and implemented"
     
     # Check for organization policies that restrict technology usage
@@ -218,10 +219,10 @@ assess_acceptable_use_policies() {
     
     if [[ -n "$restriction_policies" ]]; then
         local restriction_count=$(echo "$restriction_policies" | wc -l)
-        add_check_result "Technology restriction policies" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Technology restriction policies" \
             "Found $restriction_count organization policies restricting technology usage"
     else
-        add_check_result "Technology restriction policies" "WARN" \
+        add_check_result "$OUTPUT_FILE" "warning" "Technology restriction policies" \
             "No technology restriction policies found - consider implementing usage controls"
     fi
     
@@ -234,7 +235,7 @@ assess_acceptable_use_policies() {
     
     if [[ -n "$service_accounts" ]]; then
         local account_count=$(echo "$service_accounts" | wc -l)
-        add_check_result "Approved service accounts" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Approved service accounts" \
             "Found $account_count service accounts - ensure all are approved per acceptable use policy"
         
         # Check for service accounts with descriptions (indicating documented approval)
@@ -242,10 +243,10 @@ assess_acceptable_use_policies() {
         documented_accounts=$(echo "$service_accounts" | grep -v "^[^[:space:]]*$" | wc -l)
         
         if [[ $documented_accounts -gt 0 ]]; then
-            add_check_result "Documented service accounts" "PASS" \
+            add_check_result "$OUTPUT_FILE" "pass" "Documented service accounts" \
                 "$documented_accounts out of $account_count service accounts have descriptions"
         else
-            add_check_result "Documented service accounts" "WARN" \
+            add_check_result "$OUTPUT_FILE" "warning" "Documented service accounts" \
                 "No service accounts have descriptions - consider documenting business justification"
         fi
     fi
@@ -260,10 +261,10 @@ assess_acceptable_use_policies() {
     
     if [[ -n "$custom_images" ]]; then
         local image_count=$(echo "$custom_images" | wc -l)
-        add_check_result "Approved custom images" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Approved custom images" \
             "Found $image_count custom images - ensure all are approved per policy"
     else
-        add_check_result "Custom images" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "Custom images" \
             "No custom images found - using standard Google images"
     fi
 }
@@ -271,18 +272,18 @@ assess_acceptable_use_policies() {
 # 12.3 - Risk management
 assess_risk_management() {
     local project_id="$1"
-    debug_log "Assessing risk management for project: $project_id"
+    log_debug "Assessing risk management for project: $project_id"
     
     # 12.3.1 - Targeted risk analysis
-    add_check_result "12.3.1 - Targeted risk analysis" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.3.1 - Targeted risk analysis" \
         "Verify targeted risk analysis is documented for each PCI DSS requirement specifying risk analysis"
     
     # 12.3.2 - Customized approach risk analysis
-    add_check_result "12.3.2 - Customized approach analysis" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.3.2 - Customized approach analysis" \
         "If using customized approach: Verify targeted risk analysis is performed with senior management approval"
     
     # 12.3.3 - Cryptographic cipher suites review
-    add_check_result "12.3.3 - Cryptographic review" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.3.3 - Cryptographic review" \
         "Verify cryptographic cipher suites and protocols are documented and reviewed annually"
     
     # Check for KMS keys and their management (cryptographic inventory)
@@ -308,15 +309,15 @@ assess_risk_management() {
     
     if [[ -n "$kms_keys" ]]; then
         local key_count=$(echo "$kms_keys" | wc -l)
-        add_check_result "Cryptographic key inventory" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Cryptographic key inventory" \
             "Found $key_count KMS keys - ensure cryptographic review includes all keys"
     else
-        add_check_result "Cryptographic key inventory" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "Cryptographic key inventory" \
             "No KMS keys found - using Google-managed encryption"
     fi
     
     # 12.3.4 - Hardware and software technology review
-    add_check_result "12.3.4 - Technology review" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.3.4 - Technology review" \
         "Verify hardware and software technologies are reviewed annually for security support and compliance"
     
     # Check for asset inventory that supports technology review
@@ -328,7 +329,7 @@ assess_risk_management() {
     
     if [[ -n "$compute_instances" ]]; then
         local instance_count=$(echo "$compute_instances" | wc -l)
-        add_check_result "Compute instance inventory" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Compute instance inventory" \
             "Found $instance_count compute instances for technology review"
     fi
     
@@ -341,7 +342,7 @@ assess_risk_management() {
     
     if [[ -n "$container_images" ]]; then
         local image_count=$(echo "$container_images" | wc -l)
-        add_check_result "Container image inventory" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Container image inventory" \
             "Found $image_count container images for technology review"
     fi
     
@@ -355,10 +356,10 @@ assess_risk_management() {
     
     if [[ -n "$risk_findings" ]]; then
         local finding_count=$(echo "$risk_findings" | wc -l)
-        add_check_result "Risk identification (SCC)" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Risk identification (SCC)" \
             "Security Command Center identified $finding_count risks for management"
     else
-        add_check_result "Risk identification (SCC)" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "Risk identification (SCC)" \
             "No active Security Command Center findings - environment may be secure or SCC not configured"
     fi
 }
@@ -366,14 +367,14 @@ assess_risk_management() {
 # 12.4 - PCI DSS compliance management
 assess_compliance_management() {
     local project_id="$1"
-    debug_log "Assessing PCI DSS compliance management for project: $project_id"
+    log_debug "Assessing PCI DSS compliance management for project: $project_id"
     
     # 12.4.1 - Service provider compliance responsibility (if applicable)
-    add_check_result "12.4.1 - Service provider compliance" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.4.1 - Service provider compliance" \
         "If service provider: Verify executive management establishes responsibility for cardholder data protection"
     
     # 12.4.2 - Service provider operational reviews (if applicable)
-    add_check_result "12.4.2 - Service provider reviews" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.4.2 - Service provider reviews" \
         "If service provider: Verify quarterly reviews of security tasks performance"
     
     # Check for audit logging that supports compliance monitoring
@@ -386,10 +387,10 @@ assess_compliance_management() {
     
     if [[ -n "$audit_logs" ]]; then
         local log_count=$(echo "$audit_logs" | wc -l)
-        add_check_result "Audit logging for compliance" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Audit logging for compliance" \
             "Found $log_count audit log streams supporting compliance monitoring"
     else
-        add_check_result "Audit logging for compliance" "FAIL" \
+        add_check_result "$OUTPUT_FILE" "fail" "Audit logging for compliance" \
             "No audit logs found - critical for compliance monitoring"
     fi
     
@@ -402,10 +403,10 @@ assess_compliance_management() {
     
     if [[ -n "$monitoring_policies" ]]; then
         local policy_count=$(echo "$monitoring_policies" | wc -l)
-        add_check_result "Compliance monitoring policies" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Compliance monitoring policies" \
             "Found $policy_count monitoring policies supporting compliance oversight"
     else
-        add_check_result "Compliance monitoring policies" "WARN" \
+        add_check_result "$OUTPUT_FILE" "warning" "Compliance monitoring policies" \
             "No monitoring policies found - consider implementing compliance monitoring"
     fi
     
@@ -419,10 +420,10 @@ assess_compliance_management() {
     
     if [[ -n "$security_roles" ]]; then
         local role_count=$(echo "$security_roles" | wc -l)
-        add_check_result "Security compliance roles" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Security compliance roles" \
             "Found $role_count custom security/compliance roles"
     else
-        add_check_result "Security compliance roles" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "Security compliance roles" \
             "No custom security/compliance roles found - using predefined roles"
     fi
 }
@@ -430,14 +431,14 @@ assess_compliance_management() {
 # 12.5 - PCI DSS scope documentation and validation
 assess_scope_management() {
     local project_id="$1"
-    debug_log "Assessing PCI DSS scope management for project: $project_id"
+    log_debug "Assessing PCI DSS scope management for project: $project_id"
     
     # 12.5.1 - System component inventory
-    add_check_result "12.5.1 - System component inventory" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.5.1 - System component inventory" \
         "Verify inventory of system components in PCI DSS scope is maintained and current"
     
     # 12.5.2 - Scope documentation and validation
-    add_check_result "12.5.2 - Scope validation" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.5.2 - Scope validation" \
         "Verify PCI DSS scope is documented and confirmed annually and upon significant changes"
     
     # Use Cloud Asset Inventory for scope documentation support
@@ -450,7 +451,7 @@ assess_scope_management() {
     
     if [[ -n "$asset_inventory" ]]; then
         local asset_count=$(echo "$asset_inventory" | wc -l)
-        add_check_result "Asset inventory support" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Asset inventory support" \
             "Cloud Asset Inventory tracking $asset_count assets to support scope documentation"
         
         # Analyze asset types
@@ -458,10 +459,10 @@ assess_scope_management() {
         local storage_assets=$(echo "$asset_inventory" | grep "storage.googleapis.com" | wc -l)
         local kms_assets=$(echo "$asset_inventory" | grep "cloudkms.googleapis.com" | wc -l)
         
-        add_check_result "Scope asset breakdown" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "Scope asset breakdown" \
             "Assets by type: Compute=$compute_assets, Storage=$storage_assets, KMS=$kms_assets"
     else
-        add_check_result "Asset inventory support" "WARN" \
+        add_check_result "$OUTPUT_FILE" "warning" "Asset inventory support" \
             "No assets found in Cloud Asset Inventory"
     fi
     
@@ -474,7 +475,7 @@ assess_scope_management() {
     
     if [[ -n "$vpc_networks" ]]; then
         local network_count=$(echo "$vpc_networks" | wc -l)
-        add_check_result "Network topology documentation" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Network topology documentation" \
             "Found $network_count VPC networks for scope and data flow documentation"
     fi
     
@@ -487,41 +488,41 @@ assess_scope_management() {
     
     if [[ -n "$vpn_tunnels" ]]; then
         local tunnel_count=$(echo "$vpn_tunnels" | wc -l)
-        add_check_result "Third-party connections" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "Third-party connections" \
             "Found $tunnel_count VPN tunnels - ensure documented in scope assessment"
     fi
     
     # 12.5.2.1 & 12.5.3 - Service provider additional requirements
-    add_check_result "12.5.2.1 - Service provider scope validation" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.5.2.1 - Service provider scope validation" \
         "If service provider: Verify scope validation occurs at least every 6 months"
     
-    add_check_result "12.5.3 - Organizational change review" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.5.3 - Organizational change review" \
         "If service provider: Verify organizational changes trigger scope impact review"
 }
 
 # 12.6 - Security awareness education
 assess_security_awareness() {
     local project_id="$1"
-    debug_log "Assessing security awareness education for project: $project_id"
+    log_debug "Assessing security awareness education for project: $project_id"
     
     # 12.6.1 - Formal security awareness program
-    add_check_result "12.6.1 - Security awareness program" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.6.1 - Security awareness program" \
         "Verify formal security awareness program is implemented for all personnel"
     
     # 12.6.2 - Program review and updates
-    add_check_result "12.6.2 - Awareness program review" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.6.2 - Awareness program review" \
         "Verify security awareness program is reviewed annually and updated for new threats"
     
     # 12.6.3 - Personnel training requirements
-    add_check_result "12.6.3 - Personnel training" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.6.3 - Personnel training" \
         "Verify personnel receive security awareness training upon hire and annually"
     
     # 12.6.3.1 - Threat awareness training
-    add_check_result "12.6.3.1 - Threat awareness" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.6.3.1 - Threat awareness" \
         "Verify security training includes phishing and social engineering awareness"
     
     # 12.6.3.2 - Acceptable use training
-    add_check_result "12.6.3.2 - Acceptable use training" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.6.3.2 - Acceptable use training" \
         "Verify security training includes acceptable use of end-user technologies"
     
     # Check for security-related monitoring that could indicate awareness needs
@@ -534,10 +535,10 @@ assess_security_awareness() {
     
     if [[ -n "$security_incidents" ]]; then
         local incident_count=$(echo "$security_incidents" | wc -l)
-        add_check_result "Social engineering threats" "WARN" \
+        add_check_result "$OUTPUT_FILE" "warning" "Social engineering threats" \
             "Found $incident_count social engineering threats - ensure awareness training addresses these"
     else
-        add_check_result "Social engineering threats" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Social engineering threats" \
             "No social engineering threats detected"
     fi
     
@@ -550,10 +551,10 @@ assess_security_awareness() {
         2>/dev/null)
     
     if [[ -n "$security_policies" ]]; then
-        add_check_result "Domain restriction policies" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Domain restriction policies" \
             "Organization policies restrict external domains - supports phishing protection"
     else
-        add_check_result "Domain restriction policies" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "Domain restriction policies" \
             "No domain restriction policies found"
     fi
 }
@@ -561,10 +562,10 @@ assess_security_awareness() {
 # 12.7 - Personnel screening
 assess_personnel_screening() {
     local project_id="$1"
-    debug_log "Assessing personnel screening for project: $project_id"
+    log_debug "Assessing personnel screening for project: $project_id"
     
     # 12.7.1 - Background checks for CDE access
-    add_check_result "12.7.1 - Personnel screening" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.7.1 - Personnel screening" \
         "Verify personnel with CDE access are screened prior to hire per local laws"
     
     # Check for IAM policies that support access control
@@ -575,7 +576,7 @@ assess_personnel_screening() {
         grep "user:" | wc -l)
     
     if [[ $privileged_users -gt 0 ]]; then
-        add_check_result "Privileged user access" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "Privileged user access" \
             "Found $privileged_users users with privileged access - ensure all are properly screened"
     fi
     
@@ -588,7 +589,7 @@ assess_personnel_screening() {
     
     if [[ -n "$service_accounts" ]]; then
         local sa_count=$(echo "$service_accounts" | wc -l)
-        add_check_result "Service account governance" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Service account governance" \
             "Found $sa_count service accounts - ensure proper approval process for creation"
     fi
 }
@@ -596,26 +597,26 @@ assess_personnel_screening() {
 # 12.8 - Third-party service provider management
 assess_third_party_management() {
     local project_id="$1"
-    debug_log "Assessing third-party service provider management for project: $project_id"
+    log_debug "Assessing third-party service provider management for project: $project_id"
     
     # 12.8.1 - TPSP inventory
-    add_check_result "12.8.1 - TPSP inventory" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.8.1 - TPSP inventory" \
         "Verify list of all third-party service providers with account data access is maintained"
     
     # 12.8.2 - Written agreements with TPSPs
-    add_check_result "12.8.2 - TPSP agreements" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.8.2 - TPSP agreements" \
         "Verify written agreements exist with all TPSPs acknowledging security responsibilities"
     
     # 12.8.3 - TPSP engagement process
-    add_check_result "12.8.3 - TPSP due diligence" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.8.3 - TPSP due diligence" \
         "Verify established process for engaging TPSPs with proper due diligence"
     
     # 12.8.4 - TPSP compliance monitoring
-    add_check_result "12.8.4 - TPSP compliance monitoring" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.8.4 - TPSP compliance monitoring" \
         "Verify program to monitor TPSPs' PCI DSS compliance status annually"
     
     # 12.8.5 - TPSP responsibility matrix
-    add_check_result "12.8.5 - TPSP responsibility matrix" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.8.5 - TPSP responsibility matrix" \
         "Verify information is maintained about which PCI DSS requirements are managed by each TPSP"
     
     # Check for external connections that might indicate third-party relationships
@@ -626,7 +627,7 @@ assess_third_party_management() {
         2>/dev/null | grep -v "^[^[:space:]]*$" | wc -l)
     
     if [[ $external_ips -gt 0 ]]; then
-        add_check_result "External connectivity" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "External connectivity" \
             "Found $external_ips instances with external IPs - review for third-party connections"
     fi
     
@@ -639,26 +640,26 @@ assess_third_party_management() {
     
     if [[ -n "$sql_instances" ]]; then
         local db_count=$(echo "$sql_instances" | wc -l)
-        add_check_result "Database instances" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "Database instances" \
             "Found $db_count SQL instances - ensure TPSP agreements cover database services"
     fi
     
     # Note: Google Cloud is itself a TPSP that should be covered
-    add_check_result "Google Cloud as TPSP" "INFO" \
+    add_check_result "$OUTPUT_FILE" "info" "Google Cloud as TPSP" \
         "Ensure Google Cloud is included in TPSP inventory with appropriate agreements"
 }
 
 # 12.9 - Service provider customer support (if applicable)
 assess_service_provider_support() {
     local project_id="$1"
-    debug_log "Assessing service provider customer support for project: $project_id"
+    log_debug "Assessing service provider customer support for project: $project_id"
     
     # 12.9.1 - Customer agreements
-    add_check_result "12.9.1 - Customer agreements" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.9.1 - Customer agreements" \
         "If service provider: Verify written agreements with customers acknowledge security responsibilities"
     
     # 12.9.2 - Customer compliance support
-    add_check_result "12.9.2 - Customer compliance support" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.9.2 - Customer compliance support" \
         "If service provider: Verify support for customer compliance information requests"
     
     # Check for multi-tenancy indicators
@@ -670,7 +671,7 @@ assess_service_provider_support() {
             2>/dev/null | wc -l)
         
         if [[ $projects_in_org -gt 1 ]]; then
-            add_check_result "Multi-tenant environment" "INFO" \
+            add_check_result "$OUTPUT_FILE" "info" "Multi-tenant environment" \
                 "Found $projects_in_org projects in organization - may indicate service provider model"
         fi
     fi
@@ -679,22 +680,22 @@ assess_service_provider_support() {
 # 12.10 - Incident response
 assess_incident_response() {
     local project_id="$1"
-    debug_log "Assessing incident response for project: $project_id"
+    log_debug "Assessing incident response for project: $project_id"
     
     # 12.10.1 - Incident response plan
-    add_check_result "12.10.1 - Incident response plan" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.10.1 - Incident response plan" \
         "Verify incident response plan exists and includes all required elements"
     
     # 12.10.2 - Plan testing and updates
-    add_check_result "12.10.2 - Plan testing" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.10.2 - Plan testing" \
         "Verify incident response plan is reviewed and tested annually"
     
     # 12.10.3 - 24/7 incident response capability
-    add_check_result "12.10.3 - 24/7 response capability" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.10.3 - 24/7 response capability" \
         "Verify specific personnel are designated for 24/7 incident response"
     
     # 12.10.4 - Incident response training
-    add_check_result "12.10.4 - Response personnel training" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.10.4 - Response personnel training" \
         "Verify incident response personnel are appropriately trained"
     
     # Check for Security Command Center integration (incident detection)
@@ -707,10 +708,10 @@ assess_incident_response() {
     
     if [[ -n "$active_findings" ]]; then
         local finding_count=$(echo "$active_findings" | wc -l)
-        add_check_result "Incident detection capability" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Incident detection capability" \
             "Security Command Center provides incident detection with $finding_count active findings"
     else
-        add_check_result "Incident detection capability" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "Incident detection capability" \
             "No active Security Command Center findings"
     fi
     
@@ -723,23 +724,23 @@ assess_incident_response() {
     
     if [[ -n "$notification_channels" ]]; then
         local channel_count=$(echo "$notification_channels" | wc -l)
-        add_check_result "Incident notification channels" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Incident notification channels" \
             "Found $channel_count notification channels for incident response"
     else
-        add_check_result "Incident notification channels" "WARN" \
+        add_check_result "$OUTPUT_FILE" "warning" "Incident notification channels" \
             "No notification channels found - ensure incident response team can be alerted"
     fi
     
     # 12.10.5 - Security monitoring system alerts
-    add_check_result "12.10.5 - Security monitoring alerts" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.10.5 - Security monitoring alerts" \
         "Verify incident response plan includes monitoring and responding to security system alerts"
     
     # 12.10.6 - Plan evolution
-    add_check_result "12.10.6 - Plan evolution" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.10.6 - Plan evolution" \
         "Verify incident response plan is modified based on lessons learned and industry developments"
     
     # 12.10.7 - PAN discovery procedures
-    add_check_result "12.10.7 - PAN discovery procedures" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "12.10.7 - PAN discovery procedures" \
         "Verify procedures exist for incidents involving discovery of stored PAN in unexpected locations"
     
     # Check for Cloud Functions that might support incident response
@@ -750,48 +751,48 @@ assess_incident_response() {
         2>/dev/null | grep -i -E "(incident|response|alert|security)")
     
     if [[ -n "$response_functions" ]]; then
-        add_check_result "Automated incident response" "PASS" \
+        add_check_result "$OUTPUT_FILE" "pass" "Automated incident response" \
             "Found Cloud Functions that may support automated incident response"
     else
-        add_check_result "Automated incident response" "INFO" \
+        add_check_result "$OUTPUT_FILE" "info" "Automated incident response" \
             "No automated incident response functions detected"
     fi
 }
 
 # Manual verification guidance
 add_manual_verification_guidance() {
-    debug_log "Adding manual verification guidance"
+    log_debug "Adding manual verification guidance"
     
-    add_section "manual_verification" "Manual Verification Required" "Organizational controls requiring manual assessment"
+    add_section "$OUTPUT_FILE" "manual_verification" "Manual Verification Required" "Organizational controls requiring manual assessment"
     
-    add_check_result "Information security policy framework" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "Information security policy framework" \
         "Verify comprehensive information security policy is established, maintained, and disseminated"
     
-    add_check_result "Acceptable use policy implementation" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "Acceptable use policy implementation" \
         "Verify acceptable use policies for end-user technologies are documented and enforced"
     
-    add_check_result "Risk management program" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "Risk management program" \
         "Verify formal risk management program with documented risk analyses and annual reviews"
     
-    add_check_result "PCI DSS compliance program" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "PCI DSS compliance program" \
         "Verify PCI DSS compliance is managed with appropriate oversight and documentation"
     
-    add_check_result "Scope documentation maintenance" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "Scope documentation maintenance" \
         "Verify PCI DSS scope is documented, validated annually, and updated with changes"
     
-    add_check_result "Security awareness training program" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "Security awareness training program" \
         "Verify formal security awareness program with annual training and acknowledgments"
     
-    add_check_result "Personnel screening program" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "Personnel screening program" \
         "Verify personnel with CDE access are screened prior to hire per local laws"
     
-    add_check_result "Third-party risk management" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "Third-party risk management" \
         "Verify comprehensive third-party service provider risk management program"
     
-    add_check_result "Incident response preparedness" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "Incident response preparedness" \
         "Verify incident response plan is comprehensive, tested, and personnel are trained"
     
-    add_check_result "Executive security oversight" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "Executive security oversight" \
         "Verify executive management oversight of information security program"
 }
 
@@ -802,7 +803,7 @@ assess_project() {
     info_log "Assessing project: $project_id"
     
     # Add project section to report
-    add_section "project_$project_id" "Project: $project_id" "Assessment results for project $project_id"
+    add_section "$OUTPUT_FILE" "project_$project_id" "Project: $project_id" "Assessment results for project $project_id"
     
     # Perform assessments
     assess_information_security_policy "$project_id"
@@ -816,7 +817,7 @@ assess_project() {
     assess_service_provider_support "$project_id"
     assess_incident_response "$project_id"
     
-    debug_log "Completed assessment for project: $project_id"
+    log_debug "Completed assessment for project: $project_id"
 }
 
 # Main execution
