@@ -232,7 +232,7 @@ fi
 
 # Initialize HTML report using shared framework
 setup_assessment_scope
-initialize_report "$OUTPUT_FILE" "$REPORT_TITLE"
+initialize_report "$OUTPUT_FILE" "$REPORT_TITLE" "$REQUIREMENT_NUMBER"
 
 echo ""
 echo "Starting assessment at $(date)"
