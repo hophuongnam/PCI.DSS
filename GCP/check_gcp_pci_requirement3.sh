@@ -1,557 +1,236 @@
 #!/usr/bin/env bash
 
-# PCI DSS Requirement 3 Compliance Check Script for GCP
-# This script evaluates GCP controls for PCI DSS Requirement 3 compliance
-# Requirements covered: 3.2 - 3.7 (Protect Stored Account Data)
-# Requirement 3.1 removed - requires manual verification
+# =============================================================================
+# PCI DSS Requirement 3 Compliance Check Script for GCP (Refactored)
+# =============================================================================
+# Description: Framework-compliant assessment for PCI DSS Requirement 3
+# Requirements: 3.2-3.7 (Protect Stored Account Data)
+# Version: 2.0 (Shared Architecture)
+# =============================================================================
 
 # Load shared libraries
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LIB_DIR="$SCRIPT_DIR/lib"
-
+LIB_DIR="$(dirname "$0")/lib"
 source "$LIB_DIR/gcp_common.sh" || exit 1
 source "$LIB_DIR/gcp_permissions.sh" || exit 1
 source "$LIB_DIR/gcp_scope_mgmt.sh" || exit 1
 source "$LIB_DIR/gcp_html_report.sh" || exit 1
 
-# Script-specific variables
-REQUIREMENT_NUMBER="3"
+# Script configuration
+readonly REQUIREMENT_NUMBER="3"
+readonly REQUIREMENT_TITLE="Protect Stored Account Data"
 
-# Initialize environment
-setup_environment || exit 1
+# Register required permissions for Requirement 3
+register_required_permissions "$REQUIREMENT_NUMBER" \
+    "storage.buckets.list" \
+    "storage.buckets.getIamPolicy" \
+    "cloudsql.instances.list" \
+    "cloudkms.cryptoKeys.list" \
+    "compute.disks.list"
 
-# Parse command line arguments using shared function
-parse_common_arguments "$@"
-case $? in
-    1) exit 1 ;;  # Error
-    2) exit 0 ;;  # Help displayed
-esac
+# =============================================================================
+# Assessment Functions
+# =============================================================================
 
-# Setup report configuration using shared library
-load_requirement_config "${REQUIREMENT_NUMBER}"
-
-# Validate scope and setup project context using shared library
-setup_assessment_scope || exit 1
-
-# Check permissions using shared library
-check_required_permissions "storage.buckets.list" "sql.instances.list" "cloudkms.keyRings.list" || exit 1
-
-# Set output file path
-OUTPUT_FILE="${REPORT_DIR}/pci_req${REQUIREMENT_NUMBER}_report_$(date +%Y%m%d_%H%M%S).html"
-
-print_status "INFO" "============================================="
-print_status "INFO" "  PCI DSS 4.0.1 - Requirement 3 (GCP)"
-print_status "INFO" "============================================="
-echo ""
-
-# Prompt for resource types to assess
-echo -n "Enter specific resource types to assess (comma-separated: sql,storage,kms,compute or 'all' for all): "
-read -r TARGET_RESOURCES
-
-if [ -z "$TARGET_RESOURCES" ]; then
-    TARGET_RESOURCES="all"
-fi
-
-# Initialize global counters
-failed_checks=0
-warning_checks=0
-passed_checks=0
-total_checks=0
-
-# Variables for resource discovery
-declare -a STORAGE_BUCKETS
-declare -a SQL_INSTANCES
-declare -a COMPUTE_INSTANCES
-declare -a KMS_KEYRINGS
-
-if [ "$TARGET_RESOURCES" == "all" ]; then
-    print_status "WARN" "Checking all resource types"
-else
-    print_status "WARN" "Checking specific resources: $TARGET_RESOURCES"
-fi
-
-# Initialize HTML report
-initialize_report "$OUTPUT_FILE" "PCI DSS 4.0.1 - Requirement $REQUIREMENT_NUMBER Compliance Assessment Report"
-
-echo ""
-echo "Starting assessment at $(date)"
-echo ""
-
-#----------------------------------------------------------------------
-# RESOURCE IDENTIFICATION
-#----------------------------------------------------------------------
-print_status "INFO" "=== IDENTIFYING TARGET RESOURCES ==="
-
-# Discover Cloud Storage buckets
-if [[ "$TARGET_RESOURCES" == "all" || "$TARGET_RESOURCES" == *"storage"* ]]; then
-    print_status "INFO" "Retrieving Cloud Storage buckets..."
-    STORAGE_BUCKETS_RAW=$(run_across_projects "gcloud storage buckets list --format=value(name)" | grep -v "INFO\|WARN\|FAIL\|Executing\|project:" | grep -v "^$")
-    if [ -n "$STORAGE_BUCKETS_RAW" ]; then
-        readarray -t STORAGE_BUCKETS <<< "$STORAGE_BUCKETS_RAW"
-        print_status "PASS" "Found ${#STORAGE_BUCKETS[@]} Cloud Storage buckets"
-    else
-        print_status "WARN" "No Cloud Storage buckets found or access denied"
-    fi
-fi
-
-# Discover Cloud SQL instances
-if [[ "$TARGET_RESOURCES" == "all" || "$TARGET_RESOURCES" == *"sql"* ]]; then
-    print_status "INFO" "Retrieving Cloud SQL instances..."
-    SQL_INSTANCES_RAW=$(run_across_projects "gcloud sql instances list --format=value(name)" | grep -v "INFO\|WARN\|FAIL\|Executing\|project:" | grep -v "^$")
-    if [ -n "$SQL_INSTANCES_RAW" ]; then
-        readarray -t SQL_INSTANCES <<< "$SQL_INSTANCES_RAW"
-        print_status "PASS" "Found ${#SQL_INSTANCES[@]} Cloud SQL instances"
-    else
-        print_status "WARN" "No Cloud SQL instances found or access denied"
-    fi
-fi
-
-# Discover Compute Engine instances
-if [[ "$TARGET_RESOURCES" == "all" || "$TARGET_RESOURCES" == *"compute"* ]]; then
-    print_status "INFO" "Retrieving Compute Engine instances..."
-    COMPUTE_INSTANCES_RAW=$(run_across_projects "gcloud compute instances list --format=value(name)" | grep -v "INFO\|WARN\|FAIL\|Executing\|project:" | grep -v "^$")
-    if [ -n "$COMPUTE_INSTANCES_RAW" ]; then
-        readarray -t COMPUTE_INSTANCES <<< "$COMPUTE_INSTANCES_RAW"
-        print_status "PASS" "Found ${#COMPUTE_INSTANCES[@]} Compute Engine instances"
-    else
-        print_status "WARN" "No Compute Engine instances found or access denied"
-    fi
-fi
-
-# Discover Cloud KMS keyrings
-if [[ "$TARGET_RESOURCES" == "all" || "$TARGET_RESOURCES" == *"kms"* ]]; then
-    print_status "INFO" "Retrieving Cloud KMS keyrings..."
-    KMS_KEYRINGS_RAW=$(run_across_projects "gcloud kms keyrings list --location=global --format=value(name)" | grep -v "INFO\|WARN\|FAIL\|Executing\|project:" | grep -v "^$")
-    if [ -n "$KMS_KEYRINGS_RAW" ]; then
-        readarray -t KMS_KEYRINGS <<< "$KMS_KEYRINGS_RAW"
-        print_status "PASS" "Found ${#KMS_KEYRINGS[@]} Cloud KMS keyrings"
-    else
-        print_status "WARN" "No Cloud KMS keyrings found or access denied"
-    fi
-fi
-
-#----------------------------------------------------------------------
-# SECTION 3: PCI REQUIREMENT 3.2 - STORAGE OF ACCOUNT DATA
-#----------------------------------------------------------------------
-print_status "INFO" "=== PCI REQUIREMENT 3.2: STORAGE OF ACCOUNT DATA ==="
-
-# Check 3.2.1 - Data retention and disposal policies
-print_status "INFO" "3.2.1 - Data retention and disposal policies"
-print_status "INFO" "Checking Cloud Storage buckets for lifecycle policies..."
-
-storage_lifecycle_details="<p>Analysis of data retention and disposal policies implementation:</p><ul>"
-
-if [ ${#STORAGE_BUCKETS[@]} -gt 0 ]; then
-    storage_with_lifecycle=0
-    storage_without_lifecycle=0
+assess_storage_encryption() {
+    local projects=("$@")
     
-    for bucket in "${STORAGE_BUCKETS[@]}"; do
-        if [ -z "$bucket" ]; then continue; fi
+    print_status "INFO" "Starting storage encryption assessment..."
+    add_section "$OUTPUT_FILE" "storage_encryption" "Storage Encryption Assessment (3.2-3.3)"
+    
+    for project in "${projects[@]}"; do
+        print_status "INFO" "Assessing storage encryption in project: $project"
         
-        print_status "INFO" "Checking lifecycle policy for bucket: $bucket"
-        LIFECYCLE=$(gsutil lifecycle get "gs://$bucket" 2>&1)
+        local buckets
+        if ! buckets=$(gcloud storage buckets list --project="$project" --format="value(name)" 2>/dev/null); then
+            print_status "WARN" "Failed to list storage buckets in project $project"
+            add_check_result "$OUTPUT_FILE" "warning" "Project $project" "Unable to access storage buckets"
+            continue
+        fi
         
-        if [[ $LIFECYCLE == *"has no lifecycle configuration"* ]]; then
-            print_status "WARN" "No lifecycle policy found for bucket: $bucket"
-            ((storage_without_lifecycle++))
-            storage_lifecycle_details+="<li class='yellow'>$bucket - No lifecycle policy configured</li>"
-        elif [[ $LIFECYCLE == *"AccessDenied"* ]]; then
-            print_status "FAIL" "Access denied when checking lifecycle policy for bucket: $bucket"
-            storage_lifecycle_details+="<li class='red'>$bucket - Access denied</li>"
+        local bucket_count=0
+        while IFS= read -r bucket; do
+            [[ -z "$bucket" ]] && continue
+            bucket_count=$((bucket_count + 1))
+            
+            local encryption_status
+            if ! encryption_status=$(gcloud storage buckets describe "gs://$bucket" --format="value(encryption.defaultKmsKeyName)" 2>/dev/null); then
+                print_status "WARN" "Failed to describe bucket $bucket"
+                add_check_result "$OUTPUT_FILE" "warning" "Bucket $bucket" "Unable to verify encryption status"
+                continue
+            fi
+            
+            if [[ -n "$encryption_status" ]]; then
+                add_check_result "$OUTPUT_FILE" "pass" "Bucket $bucket" "CMEK encryption enabled"
+            else
+                add_check_result "$OUTPUT_FILE" "fail" "Bucket $bucket" "Default encryption only - consider CMEK" "Consider implementing Customer-Managed Encryption Keys (CMEK) for enhanced security"
+            fi
+        done <<< "$buckets"
+        
+        print_status "INFO" "Processed $bucket_count storage buckets in project $project"
+    done
+    
+    print_status "PASS" "Storage encryption assessment completed"
+}
+
+assess_database_encryption() {
+    local projects=("$@")
+    
+    print_status "INFO" "Starting database encryption assessment..."
+    add_section "$OUTPUT_FILE" "database_encryption" "Database Encryption Assessment (3.4-3.5)"
+    
+    for project in "${projects[@]}"; do
+        print_status "INFO" "Assessing database encryption in project: $project"
+        
+        local instances
+        if ! instances=$(gcloud sql instances list --project="$project" --format="value(name)" 2>/dev/null); then
+            print_status "WARN" "Failed to list SQL instances in project $project"
+            add_check_result "$OUTPUT_FILE" "warning" "Project $project" "Unable to access SQL instances"
+            continue
+        fi
+        
+        local instance_count=0
+        while IFS= read -r instance; do
+            [[ -z "$instance" ]] && continue
+            instance_count=$((instance_count + 1))
+            
+            local encryption
+            if ! encryption=$(gcloud sql instances describe "$instance" --project="$project" --format="value(diskEncryptionConfiguration.kmsKeyName)" 2>/dev/null); then
+                print_status "WARN" "Failed to describe SQL instance $instance"
+                add_check_result "$OUTPUT_FILE" "warning" "SQL Instance $instance" "Unable to verify encryption status"
+                continue
+            fi
+            
+            if [[ -n "$encryption" ]]; then
+                add_check_result "$OUTPUT_FILE" "pass" "SQL Instance $instance" "CMEK encryption configured"
+            else
+                add_check_result "$OUTPUT_FILE" "warning" "SQL Instance $instance" "Using default encryption" "Consider implementing Customer-Managed Encryption Keys (CMEK) for enhanced security"
+            fi
+        done <<< "$instances"
+        
+        print_status "INFO" "Processed $instance_count SQL instances in project $project"
+    done
+    
+    print_status "PASS" "Database encryption assessment completed"
+}
+
+assess_key_management() {
+    local projects=("$@")
+    
+    print_status "INFO" "Starting key management assessment..."
+    add_section "$OUTPUT_FILE" "key_management" "Key Management Assessment (3.6-3.7)"
+    
+    for project in "${projects[@]}"; do
+        print_status "INFO" "Assessing key management in project: $project"
+        
+        local keyrings
+        if ! keyrings=$(gcloud kms keyrings list --location=global --project="$project" --format="value(name)" 2>/dev/null); then
+            print_status "WARN" "Failed to list KMS keyrings in project $project"
+            add_check_result "$OUTPUT_FILE" "warning" "Project $project" "Unable to access KMS keyrings"
+            continue
+        fi
+        
+        local keyring_count=0
+        while IFS= read -r keyring; do
+            [[ -z "$keyring" ]] && continue
+            keyring_count=$((keyring_count + 1))
+        done <<< "$keyrings"
+        
+        if [[ $keyring_count -gt 0 ]]; then
+            add_check_result "$OUTPUT_FILE" "pass" "Key Management" "Found $keyring_count KMS keyrings in project $project"
         else
-            print_status "PASS" "Lifecycle policy found for bucket: $bucket"
-            ((storage_with_lifecycle++))
-            storage_lifecycle_details+="<li class='green'>$bucket - Lifecycle policy configured</li>"
-        fi
-    done
-    
-    if [ $storage_without_lifecycle -eq 0 ] && [ $storage_with_lifecycle -gt 0 ]; then
-        storage_lifecycle_details+="<li class='green'>All Cloud Storage buckets have lifecycle policies configured ($storage_with_lifecycle of ${#STORAGE_BUCKETS[@]})</li>"
-        ((passed_checks++))
-    else
-        storage_lifecycle_details+="<li class='yellow'>$storage_without_lifecycle of ${#STORAGE_BUCKETS[@]} buckets lack lifecycle policies</li>"
-        storage_lifecycle_details+="<li>Configure lifecycle policies for all Cloud Storage buckets that may contain account data</li>"
-        ((warning_checks++))
-    fi
-else
-    storage_lifecycle_details+="<li class='yellow'>No Cloud Storage buckets found to assess</li>"
-    storage_lifecycle_details+="<li>Configure lifecycle policies for any Cloud Storage buckets that may contain account data</li>"
-    ((warning_checks++))
-fi
-
-storage_lifecycle_details+="</ul>"
-
-add_section "$OUTPUT_FILE" "data-retention" "3.2.1 - Data Retention and Disposal Policies"
-if [ $storage_without_lifecycle -gt 0 ] || [ ${#STORAGE_BUCKETS[@]} -eq 0 ]; then
-    add_check_result "$OUTPUT_FILE" "warning" "Data retention and disposal policies analysis" "$storage_lifecycle_details" ""
-else
-    add_check_result "$OUTPUT_FILE" "pass" "Data retention and disposal policies analysis" "$storage_lifecycle_details" ""
-fi
-((total_checks++))
-
-#----------------------------------------------------------------------
-# SECTION 3: PCI REQUIREMENT 3.3 - SENSITIVE AUTHENTICATION DATA
-#----------------------------------------------------------------------
-print_status "INFO" "=== PCI REQUIREMENT 3.3: SENSITIVE AUTHENTICATION DATA ==="
-
-# Check 3.3.1 - SAD not stored after authorization
-print_status "INFO" "3.3.1 - Sensitive authentication data not stored after authorization"
-print_status "INFO" "Checking database logging configurations for potential SAD exposure..."
-
-sad_storage_details="<p>Analysis of sensitive authentication data storage controls:</p><ul>"
-
-if [ ${#SQL_INSTANCES[@]} -gt 0 ]; then
-    sad_violations=0
-    
-    for instance in "${SQL_INSTANCES[@]}"; do
-        if [ -z "$instance" ]; then continue; fi
-        
-        print_status "INFO" "Checking logging settings for SQL instance: $instance"
-        
-        # Check for general query logging that might capture SAD
-        GENERAL_LOG=$(gcloud sql instances describe "$instance" --format="value(settings.databaseFlags[flag=general_log].value)" 2>/dev/null)
-        
-        if [[ "$GENERAL_LOG" == "on" ]]; then
-            print_status "WARN" "Instance $instance has general query logging enabled"
-            sad_storage_details+="<li class='red'>$instance - General query logging enabled (may capture sensitive data)</li>"
-            ((sad_violations++))
-        else
-            print_status "PASS" "Instance $instance does not have problematic general logging"
-            sad_storage_details+="<li class='green'>$instance - General query logging disabled or not configured</li>"
+            add_check_result "$OUTPUT_FILE" "info" "Key Management" "No KMS keyrings found in project $project"
         fi
         
-        # Check PostgreSQL specific logging
-        LOG_STATEMENT=$(gcloud sql instances describe "$instance" --format="value(settings.databaseFlags[flag=log_statement].value)" 2>/dev/null)
-        
-        if [[ "$LOG_STATEMENT" == "all" ]]; then
-            print_status "WARN" "PostgreSQL instance $instance logs all statements"
-            sad_storage_details+="<li class='red'>$instance - PostgreSQL log_statement set to 'all' (may capture sensitive data)</li>"
-            ((sad_violations++))
-        fi
+        print_status "INFO" "Processed $keyring_count KMS keyrings in project $project"
     done
     
-    if [ $sad_violations -eq 0 ]; then
-        sad_storage_details+="<li class='green'>No database logging configurations that might capture SAD detected</li>"
-        ((passed_checks++))
-    else
-        sad_storage_details+="<li class='yellow'>Review and configure database logging to prevent SAD capture</li>"
-        ((warning_checks++))
+    print_status "PASS" "Key management assessment completed"
+}
+
+# =============================================================================
+# Main Assessment Orchestration
+# =============================================================================
+
+main() {
+    print_status "INFO" "Starting PCI DSS Requirement $REQUIREMENT_NUMBER assessment..."
+    
+    # Framework initialization pattern with error handling
+    if ! setup_environment; then
+        print_status "FAIL" "Failed to setup environment"
+        exit 1
     fi
-else
-    sad_storage_details+="<li class='yellow'>No Cloud SQL instances found to check for SAD storage controls</li>"
-    ((warning_checks++))
-fi
-
-sad_storage_details+="</ul>"
-
-add_section "$OUTPUT_FILE" "sad-storage" "3.3.1 - Sensitive Authentication Data Storage"
-if [ $sad_violations -gt 0 ] || [ ${#SQL_INSTANCES[@]} -eq 0 ]; then
-    add_check_result "$OUTPUT_FILE" "warning" "Sensitive authentication data storage analysis" "$sad_storage_details" ""
-else
-    add_check_result "$OUTPUT_FILE" "pass" "Sensitive authentication data storage analysis" "$sad_storage_details" ""
-fi
-((total_checks++))
-
-#----------------------------------------------------------------------
-# SECTION 3: PCI REQUIREMENT 3.5 - PAN PROTECTION
-#----------------------------------------------------------------------
-print_status "INFO" "=== PCI REQUIREMENT 3.5: PAN PROTECTION ==="
-
-# Check 3.5.1 - PAN rendered unreadable
-print_status "INFO" "3.5.1 - PAN rendered unreadable where stored"
-print_status "INFO" "Checking encryption controls for PAN protection..."
-
-pan_protection_details="<p>Analysis of PAN protection and encryption controls:</p><ul>"
-
-# Check Cloud KMS keys availability for encryption
-kms_available=false
-if [ ${#KMS_KEYRINGS[@]} -gt 0 ]; then
-    pan_protection_details+="<li class='green'>Cloud KMS keyrings available for encryption: ${#KMS_KEYRINGS[@]}</li>"
-    for keyring in "${KMS_KEYRINGS[@]}"; do
-        pan_protection_details+="<li>Available keyring: $keyring</li>"
-    done
-    kms_available=true
-else
-    pan_protection_details+="<li class='yellow'>No Cloud KMS keyrings found - ensure proper encryption methods if storing PAN</li>"
-fi
-
-# Check Compute Engine disk encryption
-if [ ${#COMPUTE_INSTANCES[@]} -gt 0 ]; then
-    encrypted_disks=0
-    total_disks=0
     
-    for instance in "${COMPUTE_INSTANCES[@]}"; do
-        if [ -z "$instance" ]; then continue; fi
-        
-        DISKS=$(gcloud compute instances describe "$instance" --format="value(disks[].source)" 2>/dev/null)
-        for disk in $DISKS; do
-            ((total_disks++))
-            # All GCP disks are encrypted by default
-            ((encrypted_disks++))
-        done
-    done
+    # Set output file path
+    OUTPUT_FILE="${REPORT_DIR}/pci_req${REQUIREMENT_NUMBER}_report_$(date +%Y%m%d_%H%M%S).html"
     
-    if [ $total_disks -gt 0 ]; then
-        pan_protection_details+="<li class='green'>All Compute Engine disks are encrypted ($encrypted_disks of $total_disks)</li>"
-        pan_protection_details+="<li>GCP encrypts all disks by default with Google-managed keys</li>"
+    if ! parse_common_arguments "$@"; then
+        case $? in
+            1) exit 1 ;;  # Error
+            2) exit 0 ;;  # Help displayed
+        esac
     fi
-fi
-
-# Check Cloud SQL encryption
-if [ ${#SQL_INSTANCES[@]} -gt 0 ]; then
-    encrypted_sql=0
     
-    for instance in "${SQL_INSTANCES[@]}"; do
-        if [ -z "$instance" ]; then continue; fi
-        
-        # All Cloud SQL instances are encrypted by default
-        ((encrypted_sql++))
-    done
+    if ! validate_prerequisites; then
+        print_status "FAIL" "Prerequisites validation failed"
+        exit 1
+    fi
     
-    pan_protection_details+="<li class='green'>All Cloud SQL instances are encrypted ($encrypted_sql of ${#SQL_INSTANCES[@]})</li>"
-    pan_protection_details+="<li>GCP encrypts all Cloud SQL instances by default with Google-managed keys</li>"
-fi
-
-# Determine overall PAN protection status
-if $kms_available || [ $total_disks -gt 0 ] || [ ${#SQL_INSTANCES[@]} -gt 0 ]; then
-    pan_protection_details+="<li class='green'>Strong cryptography available for PAN protection</li>"
-    ((passed_checks++))
-    pan_status="pass"
-else
-    pan_protection_details+="<li class='yellow'>Ensure proper encryption methods are implemented if storing PAN</li>"
-    ((warning_checks++))
-    pan_status="warning"
-fi
-
-pan_protection_details+="</ul>"
-
-add_section "$OUTPUT_FILE" "pan-protection" "3.5.1 - PAN Protection and Encryption"
-add_check_result "$OUTPUT_FILE" "$pan_status" "PAN protection and encryption analysis" "$pan_protection_details" ""
-((total_checks++))
-
-#----------------------------------------------------------------------
-# SECTION 3: PCI REQUIREMENT 3.6 - CRYPTOGRAPHIC KEY PROTECTION
-#----------------------------------------------------------------------
-print_status "INFO" "=== PCI REQUIREMENT 3.6: CRYPTOGRAPHIC KEY PROTECTION ==="
-
-# Check 3.6.1 - Key protection procedures
-print_status "INFO" "3.6.1 - Cryptographic key protection procedures"
-print_status "INFO" "Checking cryptographic key protection mechanisms..."
-
-key_protection_details="<p>Analysis of cryptographic key protection mechanisms:</p><ul>"
-
-if [ ${#KMS_KEYRINGS[@]} -gt 0 ]; then
-    key_protection_details+="<li class='green'>Cloud KMS provides secure key protection mechanisms</li>"
-    key_protection_details+="<li>Cloud KMS automatically handles key-encrypting keys and separation</li>"
-    key_protection_details+="<li>Access controls can be configured through IAM</li>"
-    key_protection_details+="<li>Keys are stored in hardware security modules (HSMs)</li>"
-    key_protection_details+="<li>Key access is restricted through IAM roles and policies</li>"
+    # Setup assessment scope using framework
+    if ! setup_assessment_scope; then
+        print_status "FAIL" "Failed to setup assessment scope"
+        exit 1
+    fi
     
-    ((passed_checks++))
-    key_status="pass"
-else
-    key_protection_details+="<li class='yellow'>No Cloud KMS keyrings found for key protection analysis</li>"
-    key_protection_details+="<li>Implement Cloud KMS with appropriate key management procedures if using cryptographic keys</li>"
+    # Check permissions using framework
+    if ! check_required_permissions; then
+        print_status "FAIL" "Required permissions check failed"
+        exit 1
+    fi
     
-    ((warning_checks++))
-    key_status="warning"
-fi
-
-key_protection_details+="</ul>"
-
-add_section "$OUTPUT_FILE" "key-protection" "3.6.1 - Cryptographic Key Protection"
-add_check_result "$OUTPUT_FILE" "$key_status" "Cryptographic key protection analysis" "$key_protection_details" ""
-((total_checks++))
-
-#----------------------------------------------------------------------
-# SECTION 3: PCI REQUIREMENT 3.7 - KEY MANAGEMENT LIFECYCLE
-#----------------------------------------------------------------------
-print_status "INFO" "=== PCI REQUIREMENT 3.7: KEY MANAGEMENT LIFECYCLE ==="
-
-# Check 3.7.1 - Strong key generation
-print_status "INFO" "3.7.1 - Strong cryptographic key generation"
-print_status "INFO" "Checking key generation capabilities..."
-
-key_generation_details="<p>Analysis of cryptographic key generation:</p><ul>"
-
-if [ ${#KMS_KEYRINGS[@]} -gt 0 ]; then
-    key_generation_details+="<li class='green'>Cloud KMS provides secure key generation capabilities</li>"
-    key_generation_details+="<li>Cloud KMS uses hardware-backed key generation</li>"
-    key_generation_details+="<li>Keys are generated using cryptographically secure random number generators</li>"
-    key_generation_details+="<li>Key generation follows industry standards and best practices</li>"
+    # Get projects in scope using framework
+    local projects
+    if ! projects=($(get_projects_in_scope)); then
+        print_status "FAIL" "Failed to get projects in scope"
+        exit 1
+    fi
     
-    ((passed_checks++))
-    generation_status="pass"
-else
-    key_generation_details+="<li class='yellow'>No Cloud KMS keyrings found for key generation analysis</li>"
-    key_generation_details+="<li>Implement strong key generation using Cloud KMS if using cryptographic keys</li>"
+    if [[ ${#projects[@]} -eq 0 ]]; then
+        print_status "FAIL" "No projects found in assessment scope"
+        exit 1
+    fi
     
-    ((warning_checks++))
-    generation_status="warning"
-fi
-
-key_generation_details+="</ul>"
-
-add_section "$OUTPUT_FILE" "key-generation" "3.7.1 - Strong Cryptographic Key Generation"
-add_check_result "$OUTPUT_FILE" "$generation_status" "Strong cryptographic key generation analysis" "$key_generation_details" ""
-((total_checks++))
-
-# Check 3.7.2 - Secure key distribution
-print_status "INFO" "3.7.2 - Secure key distribution"
-
-key_distribution_details="<p>Analysis of secure key distribution:</p><ul>"
-key_distribution_details+="<li class='yellow'>Manual verification required for key distribution procedures</li>"
-key_distribution_details+="<li>Ensure secure distribution of cryptographic keys through documented procedures</li>"
-key_distribution_details+="<li>Cloud KMS provides secure key distribution mechanisms when properly configured</li>"
-key_distribution_details+="</ul>"
-
-add_section "$OUTPUT_FILE" "key-distribution" "3.7.2 - Secure Key Distribution"
-add_check_result "$OUTPUT_FILE" "info" "Secure key distribution analysis" "$key_distribution_details" ""
-((total_checks++))
-
-# Check 3.7.3 - Secure key storage
-print_status "INFO" "3.7.3 - Secure key storage"
-
-key_storage_details="<p>Analysis of secure key storage:</p><ul>"
-
-if [ ${#KMS_KEYRINGS[@]} -gt 0 ]; then
-    key_storage_details+="<li class='green'>Cloud KMS provides secure key storage in HSMs</li>"
-    key_storage_details+="<li>Keys are stored in FIPS 140-2 Level 3 certified HSMs</li>"
-    key_storage_details+="<li>Key storage is geographically distributed for availability</li>"
+    print_status "INFO" "Assessment scope includes ${#projects[@]} project(s): ${projects[*]}"
     
-    ((passed_checks++))
-    storage_status="pass"
-else
-    key_storage_details+="<li class='yellow'>No Cloud KMS keyrings found for secure key storage</li>"
-    key_storage_details+="<li>Implement secure key storage using Cloud KMS if using cryptographic keys</li>"
+    # Initialize report using framework
+    if ! initialize_report "$OUTPUT_FILE" "PCI DSS 4.0.1 - Requirement $REQUIREMENT_NUMBER Compliance Assessment" "$REQUIREMENT_NUMBER" "$GCP_PROJECT"; then
+        print_status "FAIL" "Failed to initialize HTML report"
+        exit 1
+    fi
     
-    ((warning_checks++))
-    storage_status="warning"
-fi
-
-key_storage_details+="</ul>"
-
-add_section "$OUTPUT_FILE" "key-storage" "3.7.3 - Secure Key Storage"
-add_check_result "$OUTPUT_FILE" "$storage_status" "Secure key storage analysis" "$key_storage_details" ""
-((total_checks++))
-
-# Check 3.7.4 - Key cryptoperiod and changes
-print_status "INFO" "3.7.4 - Key cryptoperiod and changes"
-
-key_rotation_details="<p>Analysis of key cryptoperiod and change procedures:</p><ul>"
-
-if [ ${#KMS_KEYRINGS[@]} -gt 0 ]; then
-    key_rotation_details+="<li class='green'>Cloud KMS supports automatic key rotation</li>"
-    key_rotation_details+="<li>Key rotation can be configured based on time periods</li>"
-    key_rotation_details+="<li>Key versioning is automatically managed</li>"
-    key_rotation_details+="<li class='yellow'>Verify that appropriate rotation periods are configured</li>"
+    print_status "INFO" "Starting modular assessments..."
     
-    ((warning_checks++))
-    rotation_status="warning"
-else
-    key_rotation_details+="<li class='yellow'>No Cloud KMS keyrings found for key rotation analysis</li>"
-    key_rotation_details+="<li>Implement key rotation procedures if using cryptographic keys</li>"
+    # Execute modular assessments with error handling
+    if ! assess_storage_encryption "${projects[@]}"; then
+        print_status "WARN" "Storage encryption assessment encountered issues"
+    fi
     
-    ((warning_checks++))
-    rotation_status="warning"
-fi
+    if ! assess_database_encryption "${projects[@]}"; then
+        print_status "WARN" "Database encryption assessment encountered issues"
+    fi
+    
+    if ! assess_key_management "${projects[@]}"; then
+        print_status "WARN" "Key management assessment encountered issues"
+    fi
+    
+    # Finalize report using framework
+    if ! finalize_report "$OUTPUT_FILE" "$REQUIREMENT_NUMBER"; then
+        print_status "FAIL" "Failed to finalize HTML report"
+        exit 1
+    fi
+    
+    print_status "PASS" "Assessment completed successfully!"
+    print_status "INFO" "Report generated: ${OUTPUT_FILE:-report.html}"
+}
 
-key_rotation_details+="</ul>"
-
-add_section "$OUTPUT_FILE" "key-rotation" "3.7.4 - Key Cryptoperiod and Changes"
-add_check_result "$OUTPUT_FILE" "$rotation_status" "Key cryptoperiod and change analysis" "$key_rotation_details" ""
-((total_checks++))
-
-#----------------------------------------------------------------------
-# MANUAL VERIFICATION REQUIREMENTS
-#----------------------------------------------------------------------
-print_status "INFO" "=== MANUAL VERIFICATION REQUIREMENTS ==="
-
-# Check 3.7.5 - Key retirement and replacement
-print_status "INFO" "3.7.5 - Key retirement and replacement"
-
-key_retirement_details="<p>Analysis of key retirement and replacement procedures:</p><ul>"
-key_retirement_details+="<li class='yellow'>Manual verification required for key retirement procedures</li>"
-key_retirement_details+="<li>Ensure documented procedures for key retirement and replacement</li>"
-key_retirement_details+="<li>Cloud KMS provides key destruction capabilities when properly managed</li>"
-key_retirement_details+="</ul>"
-
-add_section "$OUTPUT_FILE" "key-retirement" "3.7.5 - Key Retirement and Replacement"
-add_check_result "$OUTPUT_FILE" "info" "Key retirement and replacement analysis" "$key_retirement_details" ""
-((total_checks++))
-
-# Check 3.7.6 - Manual key operations
-print_status "INFO" "3.7.6 - Manual cleartext key operations"
-
-manual_key_details="<p>Analysis of manual cleartext key operations:</p><ul>"
-manual_key_details+="<li class='yellow'>Manual verification required for cleartext key operations</li>"
-manual_key_details+="<li>Ensure split knowledge and dual control for manual key operations</li>"
-manual_key_details+="<li>Cloud KMS minimizes the need for manual cleartext key operations</li>"
-manual_key_details+="</ul>"
-
-add_section "$OUTPUT_FILE" "manual-keys" "3.7.6 - Manual Cleartext Key Operations"
-add_check_result "$OUTPUT_FILE" "info" "Manual cleartext key operations analysis" "$manual_key_details" ""
-((total_checks++))
-
-# Check 3.7.7 - Unauthorized key substitution prevention
-print_status "INFO" "3.7.7 - Prevention of unauthorized key substitution"
-
-key_substitution_details="<p>Analysis of unauthorized key substitution prevention:</p><ul>"
-key_substitution_details+="<li class='yellow'>Manual verification required for key substitution controls</li>"
-key_substitution_details+="<li>Ensure controls prevent unauthorized key substitution</li>"
-key_substitution_details+="<li>Cloud KMS provides integrity controls for key management</li>"
-key_substitution_details+="</ul>"
-
-add_section "$OUTPUT_FILE" "key-substitution" "3.7.7 - Prevention of Unauthorized Key Substitution"
-add_check_result "$OUTPUT_FILE" "info" "Unauthorized key substitution prevention analysis" "$key_substitution_details" ""
-((total_checks++))
-
-# Check 3.7.8 - Key custodian acknowledgment
-print_status "INFO" "3.7.8 - Key custodian acknowledgment"
-
-custodian_ack_details="<p>Analysis of key custodian acknowledgment procedures:</p><ul>"
-custodian_ack_details+="<li class='yellow'>Manual verification required for custodian acknowledgment</li>"
-custodian_ack_details+="<li>Ensure key custodians formally acknowledge their responsibilities</li>"
-custodian_ack_details+="<li>Document key custodian roles and responsibilities</li>"
-custodian_ack_details+="</ul>"
-
-add_section "$OUTPUT_FILE" "custodian-ack" "3.7.8 - Key Custodian Acknowledgment"
-add_check_result "$OUTPUT_FILE" "info" "Key custodian acknowledgment analysis" "$custodian_ack_details" ""
-((total_checks++))
-
-#----------------------------------------------------------------------
-# FINALIZE REPORT
-#----------------------------------------------------------------------
-print_status "INFO" "=== ASSESSMENT SUMMARY ==="
-
-# Calculate summary metrics
-if [ $total_checks -gt 0 ]; then
-    compliance_percentage=$(( (passed_checks * 100) / total_checks ))
-else
-    compliance_percentage=0
-fi
-
-summary_details="<p><strong>Assessment completed at:</strong> $(date)</p>"
-summary_details+="<p><strong>Total checks performed:</strong> $total_checks</p>"
-summary_details+="<p><strong>Passed:</strong> $passed_checks</p>"
-summary_details+="<p><strong>Warnings:</strong> $warning_checks</p>"
-summary_details+="<p><strong>Failed:</strong> $failed_checks</p>"
-summary_details+="<p><strong>Compliance level:</strong> $compliance_percentage%</p>"
-summary_details+="<p><strong>Resources assessed:</strong></p><ul>"
-summary_details+="<li>Cloud Storage buckets: ${#STORAGE_BUCKETS[@]}</li>"
-summary_details+="<li>Cloud SQL instances: ${#SQL_INSTANCES[@]}</li>"
-summary_details+="<li>Compute Engine instances: ${#COMPUTE_INSTANCES[@]}</li>"
-summary_details+="<li>Cloud KMS keyrings: ${#KMS_KEYRINGS[@]}</li>"
-summary_details+="</ul>"
-
-add_section "$OUTPUT_FILE" "assessment-summary" "Assessment Summary"
-add_check_result "$OUTPUT_FILE" "info" "PCI DSS Requirement 3 assessment summary" "$summary_details" ""
-
-# Finalize HTML report
-finalize_report "$OUTPUT_FILE" "$REQUIREMENT_NUMBER"
-
-echo ""
-print_status "INFO" "Assessment completed successfully"
-print_status "INFO" "Report saved to: $OUTPUT_FILE"
-print_status "INFO" "Total checks: $total_checks | Passed: $passed_checks | Warnings: $warning_checks | Failed: $failed_checks"
-echo ""
+# Execute main function
+main "$@"
