@@ -1,0 +1,22 @@
+[2025-06-09 10:09:57] [INFO] Validating prerequisites...
+[2025-06-09 10:09:57] [PASS] Tool 'gcloud' found
+[2025-06-09 10:09:57] [PASS] Tool 'jq' found
+[2025-06-09 10:09:57] [PASS] Tool 'curl' found
+[2025-06-09 10:09:58] [PASS] gcloud authenticated as: hophuongnam@securevectors.com
+[2025-06-09 10:10:00] [PASS] GCP API connectivity verified
+[2025-06-09 10:10:00] [PASS] All prerequisites validated successfully
+[2025-06-09 10:10:00] [INFO] Checking 9 required permissions...
+[2025-06-09 10:10:00] [FAIL] ✗ compute.firewalls.list
+[2025-06-09 10:10:00] [FAIL] ✗ compute.networks.list
+[2025-06-09 10:10:00] [FAIL] ✗ compute.subnetworks.list
+[2025-06-09 10:10:00] [FAIL] ✗ compute.instances.list
+[2025-06-09 10:10:00] [FAIL] ✗ compute.backendServices.list
+[2025-06-09 10:10:00] [FAIL] ✗ compute.forwardingRules.list
+[2025-06-09 10:10:00] [FAIL] ✗ compute.routers.list
+[2025-06-09 10:10:00] [FAIL] ✗ compute.routes.list
+[2025-06-09 10:10:00] [FAIL] ✗ resourcemanager.projects.get
+[2025-06-09 10:10:00] [INFO] Permission check: 0/9 available (0%)
+[2025-06-09 10:10:00] [WARN] Limited permissions detected (0% coverage)
+[2025-06-09 10:10:00] [INFO] Missing 9 of 9 required permissions
+[2025-06-09 10:10:00] [INFO] Assessment can continue with limited functionality
+[2025-06-09 10:10:00] [INFO] Assessment cancelled by user
