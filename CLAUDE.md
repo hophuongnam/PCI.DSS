@@ -2,3 +2,4 @@
 - when writing bash script, remember for shebang, always use env, example:
   #!/usr/bin/env bash
 - .simone is in project's root. You can access it using the 'Tasks' symlink.
+- .claude is in project's root, it is NOT in Tasks/

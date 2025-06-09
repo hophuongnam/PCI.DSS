@@ -1,571 +1,295 @@
 #!/usr/bin/env bash
 
-# PCI DSS Requirement 5 Compliance Check Script for GCP
-# Protect all systems against malware and regularly update anti-malware software or programs
+# PCI DSS Requirement 5 Compliance Check Script for GCP (Framework-Migrated Version)
+# This script evaluates GCP controls for PCI DSS Requirement 5 compliance
+# Requirements covered: 5.1-5.4 (Protect All Systems Against Malware)
 
-# Load shared libraries
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LIB_DIR="$SCRIPT_DIR/lib"
+# Framework Integration - Load all 4 shared libraries
+LIB_DIR="$(dirname "$0")/lib"
+source "$LIB_DIR/gcp_common.sh"
+source "$LIB_DIR/gcp_permissions.sh"
+source "$LIB_DIR/gcp_html_report.sh"
+source "$LIB_DIR/gcp_scope_mgmt.sh"
 
-source "$LIB_DIR/gcp_common.sh" || exit 1
-source "$LIB_DIR/gcp_permissions.sh" || exit 1
-source "$LIB_DIR/gcp_scope_mgmt.sh" || exit 1
-source "$LIB_DIR/gcp_html_report.sh" || exit 1
-
-# Script-specific variables
+# Script-specific configuration
 REQUIREMENT_NUMBER="5"
+REQUIREMENT_TITLE="Protect All Systems Against Malware"
 
-# Initialize environment
+# Function to show help
+show_help() {
+    echo "GCP PCI DSS Requirement 5 Assessment Script (Framework Version)"
+    echo "=============================================================="
+    echo ""
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  -s, --scope SCOPE          Assessment scope: 'project' or 'organization' (default: project)"
+    echo "  -p, --project PROJECT_ID   Specific project to assess (overrides current gcloud config)"
+    echo "  -o, --org ORG_ID          Specific organization ID to assess (required for organization scope)"
+    echo "  -f, --format FORMAT       Output format: 'html' or 'text' (default: html)"
+    echo "  -v, --verbose             Enable verbose output"
+    echo "  -h, --help                Show this help message"
+    echo ""
+    echo "Examples:"
+    echo "  $0                                    # Assess current project"
+    echo "  $0 --scope project --project my-proj # Assess specific project" 
+    echo "  $0 --scope organization --org 123456 # Assess entire organization"
+    echo ""
+    echo "Note: Organization scope requires appropriate permissions across all projects in the organization."
+}
+
+# Register required permissions for Requirement 5
+register_required_permissions "$REQUIREMENT_NUMBER" \
+    "compute.instances.list" \
+    "compute.instanceTemplates.list" \
+    "compute.instanceGroupManagers.list" \
+    "compute.autoscalers.list" \
+    "compute.metadata.get" \
+    "compute.projects.get" \
+    "resourcemanager.projects.getIamPolicy"
+
+# Initialize framework
 setup_environment || exit 1
 
-# Parse command line arguments using shared function
+# Parse arguments
 parse_common_arguments "$@"
 case $? in
     1) exit 1 ;;  # Error
     2) exit 0 ;;  # Help displayed
 esac
 
-# Setup report configuration using shared library
-load_requirement_config "${REQUIREMENT_NUMBER}"
+# Validate prerequisites
+validate_prerequisites || exit 1
 
-# Validate scope and setup project context using shared library
+# Setup assessment scope
 setup_assessment_scope || exit 1
 
-# Check permissions using shared library
-check_required_permissions "compute.instances.list" || exit 1
+# Check required permissions
+check_required_permissions || exit 1
 
-# Initialize HTML report using shared library
 # Set output file path
 OUTPUT_FILE="${REPORT_DIR}/pci_req${REQUIREMENT_NUMBER}_report_$(date +%Y%m%d_%H%M%S).html"
 
-# Initialize HTML report using shared library
-initialize_report "$OUTPUT_FILE" "PCI DSS 4.0.1 - Requirement $REQUIREMENT_NUMBER Compliance Assessment Report" "${REQUIREMENT_NUMBER}"
+# Initialize HTML report
+initialize_report "$OUTPUT_FILE" "PCI DSS 4.0.1 - Requirement $REQUIREMENT_NUMBER Compliance Assessment Report" "${REQUIREMENT_NUMBER}" || exit 1
 
+# Assessment Functions
 
-
-# Function to check Compute Engine instances for anti-malware protection
-check_gce_antimalware() {
+# 5.1 - Processes and mechanisms for protecting systems from malicious software
+assess_antimalware_solutions() {
+    local project_id="$1"
+    local section_title="5.1 - Anti-malware Solutions"
+    local check_title="Compute Engine Anti-malware Protection"
+    
+    debug_log "Assessing anti-malware solutions for project: $project_id"
+    
+    # Get Compute Engine instances
+    local instances
+    instances=$(gcloud compute instances list --project="$project_id" --format="value(name,zone,status)" 2>/dev/null)
+    
+    if [[ -z "$instances" ]]; then
+        add_check_result "$check_title" "INFO" "No Compute Engine instances found in project $project_id"
+        return 0
+    fi
+    
+    local total_instances=0
+    local protected_instances=0
     local details=""
-    local found_unprotected=false
     
-    details+="<p>Analysis of Compute Engine instances for anti-malware protection:</p>"
-    
-    # Get all Compute Engine instances across all zones in scope
-    local instance_list
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        details+="<p><strong>Organization-wide assessment:</strong></p>"
-        instance_list=$(run_gcp_command_across_projects "gcloud compute instances list" "--format='value(name,zone,status)'")
-    else
-        instance_list=$(gcloud compute instances list --format="value(name,zone,status)" 2>/dev/null)
-    fi
-    
-    if [ -z "$instance_list" ]; then
-        if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-            details+="<p>No Compute Engine instances found in organization $DEFAULT_ORG.</p>"
-        else
-            details+="<p>No Compute Engine instances found in project $DEFAULT_PROJECT.</p>"
-        fi
-        echo "$details"
-        return
-    fi
-    
-    details+="<ul>"
-    
-    while IFS=$'\t' read -r instance_info; do
-        # Skip empty lines
-        if [ -z "$instance_info" ]; then
-            continue
-        fi
+    while IFS=$'\t' read -r name zone status; do
+        [[ -z "$name" || "$status" == "TERMINATED" ]] && continue
+        ((total_instances++))
         
-        # Parse project/instance info for organization scope
-        if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-            local project_instance=$(echo "$instance_info" | cut -d'/' -f1)
-            local instance_data=$(echo "$instance_info" | cut -d'/' -f2-)
-            instance_name=$(echo "$instance_data" | cut -d$'\t' -f1)
-            zone=$(echo "$instance_data" | cut -d$'\t' -f2)
-            status=$(echo "$instance_data" | cut -d$'\t' -f3)
-            
-            # Skip terminated instances
-            if [ "$status" == "TERMINATED" ]; then
-                continue
-            fi
-            
-            # Get instance metadata for anti-malware information
-            metadata=$(gcloud compute instances describe "$instance_name" --zone="$zone" --project="$project_instance" --format="value(metadata.items)" 2>/dev/null)
-            
-            details+="<li><strong>Project:</strong> $project_instance, <strong>Instance:</strong> $instance_name"
-        else
-            instance_name=$(echo "$instance_info" | cut -d$'\t' -f1)
-            zone=$(echo "$instance_info" | cut -d$'\t' -f2)
-            status=$(echo "$instance_info" | cut -d$'\t' -f3)
-            
-            # Skip terminated instances
-            if [ "$status" == "TERMINATED" ]; then
-                continue
-            fi
-            
-            metadata=$(gcloud compute instances describe "$instance_name" --zone="$zone" --format="value(metadata.items)" 2>/dev/null)
-            
-            details+="<li><strong>Instance:</strong> $instance_name (Zone: $zone)"
-        fi
+        # Check for anti-malware metadata
+        local metadata
+        metadata=$(gcloud compute instances describe "$name" --zone="$zone" --project="$project_id" --format="value(metadata.items)" 2>/dev/null)
+        
+        local antimalware_found=false
         
         # Check for anti-malware related metadata
-        antimalware_found=false
-        if echo "$metadata" | grep -i -E "antimalware|anti-malware|antivirus|anti-virus|security-agent" > /dev/null; then
-            antimalware_info=$(echo "$metadata" | grep -i -E "antimalware|anti-malware|antivirus|anti-virus|security-agent" | head -1)
-            details+=" - <span class='green'>Anti-malware metadata found: $antimalware_info</span>"
+        if echo "$metadata" | grep -qi "antimalware\|anti-malware\|antivirus\|security-agent"; then
             antimalware_found=true
         fi
         
-        # Check for OS Login which can provide some security features
-        os_login=$(echo "$metadata" | grep "enable-oslogin.*TRUE")
-        if [ -n "$os_login" ]; then
-            details+=" - <span class='green'>OS Login enabled (enhanced security)</span>"
-        fi
-        
         # Check for Shielded VM features
-        if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-            shielded_config=$(gcloud compute instances describe "$instance_name" --zone="$zone" --project="$project_instance" --format="value(shieldedInstanceConfig)" 2>/dev/null)
+        local shielded_config
+        shielded_config=$(gcloud compute instances describe "$name" --zone="$zone" --project="$project_id" --format="value(shieldedInstanceConfig)" 2>/dev/null)
+        
+        if echo "$shielded_config" | grep -q "enableIntegrityMonitoring: true\|enableSecureBoot: true\|enableVtpm: true"; then
+            antimalware_found=true
+        fi
+        
+        if [[ "$antimalware_found" == "true" ]]; then
+            ((protected_instances++))
+            details+="Instance $name: Protected\n"
         else
-            shielded_config=$(gcloud compute instances describe "$instance_name" --zone="$zone" --format="value(shieldedInstanceConfig)" 2>/dev/null)
+            details+="Instance $name: No anti-malware configuration detected\n"
         fi
         
-        if [ -n "$shielded_config" ]; then
-            integrity_monitoring=$(echo "$shielded_config" | grep -o "enableIntegrityMonitoring: true")
-            secure_boot=$(echo "$shielded_config" | grep -o "enableSecureBoot: true")
-            vtpm=$(echo "$shielded_config" | grep -o "enableVtpm: true")
-            
-            if [ -n "$integrity_monitoring" ] || [ -n "$secure_boot" ] || [ -n "$vtpm" ]; then
-                details+=" - <span class='green'>Shielded VM features enabled (malware protection)</span>"
-                antimalware_found=true
-            fi
-        fi
-        
-        if [ "$antimalware_found" = false ]; then
-            details+=" - <span class='red'>No anti-malware configuration detected</span>"
-            found_unprotected=true
-        fi
-        
-        details+="</li>"
-        
-    done <<< "$instance_list"
+    done <<< "$instances"
     
-    details+="</ul>"
+    local status="PASS"
+    local message="Anti-malware protection: $protected_instances/$total_instances instances protected"
     
-    echo "$details"
-    if [ "$found_unprotected" = true ]; then
-        return 1
-    else
-        return 0
+    if [[ $protected_instances -lt $total_instances ]]; then
+        status="FAIL"
+        message="Anti-malware protection gaps: $((total_instances - protected_instances)) unprotected instances"
     fi
+    
+    add_check_result "$check_title" "$status" "$message" "$details"
 }
 
-# Function to check if anti-malware is regularly updated
-check_antimalware_updates() {
-    local details=""
-    local found_outdated=false
+# 5.2 - Malware prevention, detection, and addressing mechanisms  
+assess_malware_detection() {
+    local project_id="$1"
+    local section_title="5.2 - Malware Detection"
+    local check_title="OS Config Patch Management"
     
-    details+="<p>Checking for anti-malware update mechanisms in GCP:</p>"
+    debug_log "Assessing malware detection mechanisms for project: $project_id"
     
-    # Check for OS Config patch management across scope
+    # Check for OS Config patch policies
     local patch_policies
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        details+="<p><strong>Organization-wide patch management:</strong></p>"
-        patch_policies=$(run_gcp_command_across_projects "gcloud compute os-config patch-policies list" "--format='value(name)'")
-    else
-        patch_policies=$(gcloud compute os-config patch-policies list --format="value(name)" 2>/dev/null)
+    patch_policies=$(gcloud compute os-config patch-policies list --project="$project_id" --format="value(name)" 2>/dev/null)
+    
+    if [[ -z "$patch_policies" ]]; then
+        add_check_result "$check_title" "FAIL" "No OS Config patch policies found" "Consider creating patch policies for regular security updates"
+        return 1
     fi
     
-    if [ -z "$patch_policies" ]; then
-        details+="<p class='yellow'>No OS Config patch policies found. Consider creating patch policies for regular security updates.</p>"
-        found_outdated=true
-    else
-        details+="<p class='green'>Found OS Config patch policies:</p><ul>"
-        echo "$patch_policies" | while read -r policy; do
-            if [ -n "$policy" ]; then
-                details+="<li>$policy</li>"
-            fi
-        done
-        details+="</ul>"
-    fi
+    local policy_count
+    policy_count=$(echo "$patch_policies" | wc -l)
     
-    # Check for Container Analysis for vulnerability scanning
+    add_check_result "$check_title" "PASS" "OS Config patch policies configured: $policy_count policies" "Found patch management policies for automated security updates"
+    
+    # Check Container Analysis for vulnerability scanning
+    local check_title2="Container Analysis Vulnerability Scanning"
     local images
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        images=$(run_gcp_command_across_projects "gcloud container images list" "--format='value(name)' --limit=5")
-    else
-        images=$(gcloud container images list --format="value(name)" --limit=5 2>/dev/null)
-    fi
+    images=$(gcloud container images list --project="$project_id" --format="value(name)" --limit=5 2>/dev/null)
     
-    if [ -n "$images" ]; then
-        details+="<p>Checking vulnerability scans for container images:</p><ul>"
-        echo "$images" | while IFS= read -r image; do
-            if [ -n "$image" ]; then
-                # For organization scope, extract project from image path
-                if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-                    project_image=$(echo "$image" | cut -d'/' -f1)
-                    image_name=$(echo "$image" | cut -d'/' -f2-)
-                    # Get vulnerability scan results
-                    vulnerabilities=$(gcloud container images scan "$image_name" --project="$project_image" --format="value(vulnerabilities)" 2>/dev/null | grep -c "CRITICAL\|HIGH" || echo "0")
-                    
-                    if [ "$vulnerabilities" -gt 0 ]; then
-                        details+="<li class='red'>$project_image/$image_name - $vulnerabilities high/critical vulnerabilities found</li>"
-                        found_outdated=true
-                    else
-                        details+="<li class='green'>$project_image/$image_name - No high/critical vulnerabilities found</li>"
-                    fi
-                else
-                    vulnerabilities=$(gcloud container images scan "$image" --format="value(vulnerabilities)" 2>/dev/null | grep -c "CRITICAL\|HIGH" || echo "0")
-                    
-                    if [ "$vulnerabilities" -gt 0 ]; then
-                        details+="<li class='red'>$image - $vulnerabilities high/critical vulnerabilities found</li>"
-                        found_outdated=true
-                    else
-                        details+="<li class='green'>$image - No high/critical vulnerabilities found</li>"
-                    fi
-                fi
-            fi
-        done
-        details+="</ul>"
+    if [[ -n "$images" ]]; then
+        add_check_result "$check_title2" "INFO" "Container images detected" "Container Analysis should be enabled for vulnerability scanning"
     else
-        details+="<p>No container images found in scope.</p>"
-    fi
-    
-    echo "$details"
-    if [ "$found_outdated" = true ]; then
-        return 1
-    else
-        return 0
+        add_check_result "$check_title2" "INFO" "No container images found" "Container Analysis not applicable"
     fi
 }
 
-# Function to check for periodic malware scans
-check_periodic_scans() {
-    local details=""
-    local found_issues=false
+# 5.3 - Anti-malware mechanisms maintenance and monitoring
+assess_antimalware_monitoring() {
+    local project_id="$1"
+    local section_title="5.3 - Anti-malware Monitoring"
+    local check_title="Cloud Scheduler Monitoring Jobs"
     
-    details+="<p>Checking for evidence of periodic malware scans in GCP:</p>"
+    debug_log "Assessing anti-malware monitoring for project: $project_id"
     
-    # Check for Cloud Scheduler jobs that might trigger scans
-    local scan_jobs
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        scan_jobs=$(run_gcp_command_across_projects "gcloud scheduler jobs list" "--format='value(name,schedule)' --filter='name~scan OR name~malware OR name~security'")
+    # Check for Cloud Scheduler jobs for monitoring
+    local scheduler_jobs
+    scheduler_jobs=$(gcloud scheduler jobs list --project="$project_id" --format="value(name)" 2>/dev/null)
+    
+    if [[ -z "$scheduler_jobs" ]]; then
+        add_check_result "$check_title" "WARN" "No Cloud Scheduler jobs found" "Consider implementing automated monitoring schedules"
     else
-        scan_jobs=$(gcloud scheduler jobs list --format="value(name,schedule)" --filter="name~'scan' OR name~'malware' OR name~'security'" 2>/dev/null)
+        local job_count
+        job_count=$(echo "$scheduler_jobs" | wc -l)
+        add_check_result "$check_title" "PASS" "Scheduled monitoring jobs: $job_count jobs" "Cloud Scheduler jobs configured for automated tasks"
     fi
     
-    if [ -z "$scan_jobs" ]; then
-        details+="<p class='yellow'>No Cloud Scheduler jobs found for malware scanning. Consider implementing scheduled security scans.</p>"
-        found_issues=true
-    else
-        details+="<p class='green'>Found scheduled jobs that may include malware scanning:</p><ul>"
-        echo "$scan_jobs" | while IFS=$'\t' read -r job_info; do
-            if [ -n "$job_info" ]; then
-                details+="<li>$job_info</li>"
-            fi
-        done
-        details+="</ul>"
-    fi
+    # Check for Cloud Functions for monitoring
+    local check_title2="Cloud Functions Monitoring"
+    local functions
+    functions=$(gcloud functions list --project="$project_id" --format="value(name)" 2>/dev/null)
     
-    # Check for Cloud Functions that might perform scans
-    local scan_functions
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        scan_functions=$(run_gcp_command_across_projects "gcloud functions list" "--format='value(name,updateTime)' --filter='name~scan OR name~malware OR name~security'")
+    if [[ -z "$functions" ]]; then
+        add_check_result "$check_title2" "INFO" "No Cloud Functions found" "No serverless monitoring functions detected"
     else
-        scan_functions=$(gcloud functions list --format="value(name,updateTime)" --filter="name~'scan' OR name~'malware' OR name~'security'" 2>/dev/null)
-    fi
-    
-    if [ -z "$scan_functions" ]; then
-        details+="<p class='yellow'>No Cloud Functions found that appear to perform security scanning.</p>"
-        found_issues=true
-    else
-        details+="<p class='green'>Found Cloud Functions that may perform security scanning:</p><ul>"
-        echo "$scan_functions" | while IFS=$'\t' read -r function_info; do
-            if [ -n "$function_info" ]; then
-                details+="<li>$function_info</li>"
-            fi
-        done
-        details+="</ul>"
-    fi
-    
-    echo "$details"
-    if [ "$found_issues" = true ]; then
-        return 1
-    else
-        return 0
+        local function_count
+        function_count=$(echo "$functions" | wc -l)
+        add_check_result "$check_title2" "INFO" "Cloud Functions detected: $function_count functions" "Serverless functions available for monitoring tasks"
     fi
 }
 
-# Function to check for anti-malware mechanisms at network boundaries
-check_boundary_protection() {
-    local details=""
-    local found_issues=false
+# 5.4 - Anti-phishing mechanisms implementation and monitoring
+assess_antiphishing_mechanisms() {
+    local project_id="$1"
+    local section_title="5.4 - Anti-phishing Mechanisms"
+    local check_title="Cloud Armor Security Policies"
     
-    details+="<p>Checking for anti-malware mechanisms at network boundaries:</p>"
+    debug_log "Assessing anti-phishing mechanisms for project: $project_id"
     
     # Check for Cloud Armor security policies
-    local security_policies
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        security_policies=$(run_gcp_command_across_projects "gcloud compute security-policies list" "--format='value(name,description)'")
+    local armor_policies
+    armor_policies=$(gcloud compute security-policies list --project="$project_id" --format="value(name)" 2>/dev/null)
+    
+    if [[ -z "$armor_policies" ]]; then
+        add_check_result "$check_title" "WARN" "No Cloud Armor security policies found" "Consider implementing Cloud Armor for DDoS and application-layer protection"
     else
-        security_policies=$(gcloud compute security-policies list --format="value(name,description)" 2>/dev/null)
+        local policy_count
+        policy_count=$(echo "$armor_policies" | wc -l)
+        add_check_result "$check_title" "PASS" "Cloud Armor policies: $policy_count policies" "Security policies configured for web application protection"
     fi
     
-    if [ -z "$security_policies" ]; then
-        details+="<p class='yellow'>No Cloud Armor security policies found. Cloud Armor can provide protection against malicious traffic.</p>"
-        found_issues=true
-    else
-        details+="<p class='green'>Found Cloud Armor security policies:</p><ul>"
-        echo "$security_policies" | while IFS=$'\t' read -r policy_info; do
-            if [ -n "$policy_info" ]; then
-                details+="<li>$policy_info</li>"
-            fi
-        done
-        details+="</ul>"
-    fi
-    
-    # Check for VPC firewall rules
+    # Check for firewall rules with anti-phishing considerations
+    local check_title2="Firewall Rules Configuration"
     local firewall_rules
-    if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-        firewall_rules=$(run_gcp_command_across_projects "gcloud compute firewall-rules list" "--format='value(name,direction)' --filter='disabled:false'")
-    else
-        firewall_rules=$(gcloud compute firewall-rules list --format="value(name,direction)" --filter="disabled:false" 2>/dev/null)
-    fi
+    firewall_rules=$(gcloud compute firewall-rules list --project="$project_id" --format="value(name,direction,action)" 2>/dev/null)
     
-    if [ -n "$firewall_rules" ]; then
-        details+="<p>Analyzing VPC firewall rules for boundary protection:</p>"
+    if [[ -z "$firewall_rules" ]]; then
+        add_check_result "$check_title2" "FAIL" "No firewall rules found" "Firewall rules are required for network security"
+    else
+        local rule_count
+        rule_count=$(echo "$firewall_rules" | wc -l)
+        local deny_rules
+        deny_rules=$(echo "$firewall_rules" | grep -c "DENY" || echo "0")
         
-        # Count rules
-        local rule_count=$(echo "$firewall_rules" | wc -l)
-        
-        if [ "$rule_count" -lt 5 ]; then
-            details+="<p class='red'>Very few firewall rules found ($rule_count). Ensure proper network boundary controls are in place.</p>"
-            found_issues=true
+        if [[ $deny_rules -gt 0 ]]; then
+            add_check_result "$check_title2" "PASS" "Firewall rules configured: $rule_count total, $deny_rules deny rules" "Restrictive firewall rules help prevent malicious traffic"
         else
-            details+="<p class='green'>Found $rule_count firewall rules configured for network boundary protection.</p>"
+            add_check_result "$check_title2" "WARN" "Firewall rules found but no explicit deny rules: $rule_count rules" "Consider implementing explicit deny rules for better security"
         fi
-    else
-        details+="<p class='red'>No firewall rules found or unable to access firewall configuration.</p>"
-        found_issues=true
-    fi
-    
-    echo "$details"
-    if [ "$found_issues" = true ]; then
-        return 1
-    else
-        return 0
     fi
 }
 
-# Validate scope and requirements
-if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-    if [ -z "$DEFAULT_ORG" ]; then
-        print_status "FAIL" "Error: Organization scope requires an organization ID."
-        print_status "WARN" "Please provide organization ID with --org flag or ensure you have organization access."
-        exit 1
-    fi
-else
-    # Project scope validation
-    if [ -z "$DEFAULT_PROJECT" ]; then
-        print_status "FAIL" "Error: No project specified."
-        print_status "WARN" "Please set a default project with: gcloud config set project PROJECT_ID"
-        print_status "WARN" "Or specify a project with: --project PROJECT_ID"
-        exit 1
-    fi
-fi
-
-# Start script execution
-print_status "INFO" "============================================="
-print_status "INFO" "  PCI DSS 4.0.1 - Requirement $REQUIREMENT_NUMBER (GCP)"
-print_status "INFO" "  (Protect All Systems Against Malware)"
-print_status "INFO" "============================================="
-echo ""
-
-# Display scope information
-print_status "INFO" "Assessment Scope: $ASSESSMENT_SCOPE"
-if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-    print_status "INFO" "Organization: $DEFAULT_ORG"
-    print_status "WARN" "Note: Organization-wide assessment may take longer and requires broader permissions"
-else
-    print_status "INFO" "Project: $DEFAULT_PROJECT"
-fi
-echo ""
-
-# Initialize HTML report
-initialize_html_report "$OUTPUT_FILE" "$REPORT_TITLE"
-
-echo ""
-echo "Starting assessment at $(date)"
-echo ""
-
-#----------------------------------------------------------------------
-# SECTION 1: PERMISSIONS CHECK
-#----------------------------------------------------------------------
-add_html_section "$OUTPUT_FILE" "GCP Permissions Check" "<p>Verifying access to required GCP services for PCI Requirement $REQUIREMENT_NUMBER assessment...</p>" "info"
-
-print_status "INFO" "=== CHECKING REQUIRED GCP PERMISSIONS ==="
-
-# Check all required permissions based on scope
-if [ "$ASSESSMENT_SCOPE" == "organization" ]; then
-    # Organization-wide permission checks
-    check_gcp_permission "Projects" "list" "gcloud projects list --filter='parent.id:$DEFAULT_ORG' --limit=1"
-    ((total_checks++))
+# Core assessment function for project iteration
+assess_project() {
+    local project_id="$1"
+    debug_log "Starting Requirement 5 assessment for project: $project_id"
     
-    check_gcp_permission "Organizations" "access" "gcloud organizations list --filter='name:organizations/$DEFAULT_ORG' --limit=1"
-    ((total_checks++))
-fi
+    add_section "malware_protection" "PCI DSS Requirement 5: Malware Protection Assessment" "Assessment of anti-malware controls and monitoring for project $project_id"
+    
+    # Run all assessment functions for this project
+    assess_antimalware_solutions "$project_id"
+    assess_malware_detection "$project_id"
+    assess_antimalware_monitoring "$project_id"
+    assess_antiphishing_mechanisms "$project_id"
+}
 
-# Scope-aware permission checks
-PROJECT_FLAG=""
-if [ "$ASSESSMENT_SCOPE" == "project" ]; then
-    PROJECT_FLAG="--project=$DEFAULT_PROJECT"
-fi
-
-# Requirement 5 specific permission checks
-check_gcp_permission "Compute Engine" "instances" "gcloud compute instances list $PROJECT_FLAG --limit=1"
-((total_checks++))
-
-check_gcp_permission "Compute Engine" "os-config" "gcloud compute os-config patch-policies list $PROJECT_FLAG --limit=1"
-((total_checks++))
-
-check_gcp_permission "Container" "images" "gcloud container images list --limit=1"
-((total_checks++))
-
-check_gcp_permission "Compute Engine" "security-policies" "gcloud compute security-policies list $PROJECT_FLAG --limit=1"
-((total_checks++))
-
-check_gcp_permission "Cloud Scheduler" "jobs" "gcloud scheduler jobs list $PROJECT_FLAG --limit=1"
-((total_checks++))
-
-# Calculate permissions percentage
-available_permissions=$((total_checks - access_denied_checks))
-if [ $available_permissions -gt 0 ]; then
-    permissions_percentage=$(( ((total_checks - access_denied_checks) * 100) / total_checks ))
-else
-    permissions_percentage=0
-fi
-
-if [ $permissions_percentage -lt 70 ]; then
-    print_status "FAIL" "WARNING: Insufficient permissions to perform a complete PCI Requirement $REQUIREMENT_NUMBER assessment."
-    add_html_section "$OUTPUT_FILE" "Permission Assessment" "<p class='red'>Insufficient permissions detected. Only $permissions_percentage% of required permissions are available.</p><p>Without these permissions, the assessment will be incomplete and may not accurately reflect your PCI DSS compliance status.</p>" "fail"
-    read -p "Continue with limited assessment? (y/n): " CONTINUE
-    if [[ ! $CONTINUE =~ ^[Yy]$ ]]; then
-        echo "Assessment aborted."
+# Main execution logic
+main() {
+    debug_log "Starting PCI DSS Requirement 5 assessment"
+    
+    # Get projects in scope
+    local projects
+    projects=$(get_projects_in_scope)
+    
+    if [[ -z "$projects" ]]; then
+        print_status "ERROR" "No projects found in assessment scope"
         exit 1
     fi
-else
-    print_status "PASS" "Permission check complete: $permissions_percentage% permissions available"
-    add_html_section "$OUTPUT_FILE" "Permission Assessment" "<p class='green'>Sufficient permissions detected. $permissions_percentage% of required permissions are available.</p>" "pass"
-fi
+    
+    debug_log "Found projects in scope: $(echo "$projects" | wc -l)"
+    
+    # Assess each project
+    while IFS= read -r project_id; do
+        [[ -z "$project_id" ]] && continue
+        debug_log "Processing project: $project_id"
+        assess_project "$project_id"
+    done <<< "$projects"
+    
+    # Finalize the report
+    finalize_report "$OUTPUT_FILE"
+    
+    print_status "INFO" "PCI DSS Requirement 5 assessment completed"
+    print_status "INFO" "Report generated: $OUTPUT_FILE"
+}
 
-# Reset counters for actual compliance checks
-total_checks=0
-passed_checks=0
-warning_checks=0
-failed_checks=0
-
-#----------------------------------------------------------------------
-# SECTION 2: REQUIREMENT 5 ASSESSMENT LOGIC
-#----------------------------------------------------------------------
-print_status "INFO" "=== PCI REQUIREMENT $REQUIREMENT_NUMBER: PROTECT ALL SYSTEMS AGAINST MALWARE ==="
-
-# Requirement 5.2: Anti-malware mechanisms and processes
-add_html_section "$OUTPUT_FILE" "Requirement 5.2: Anti-malware mechanisms and processes" "<p>Verifying anti-malware deployment and configuration across systems...</p>" "info"
-
-# Check 5.2.1 - Anti-malware protection is deployed
-print_status "INFO" "Checking for anti-malware protection deployment..."
-am_details=$(check_gce_antimalware)
-if [[ "$am_details" == *"class='red'"* ]]; then
-    add_html_section "$OUTPUT_FILE" "5.2.1 - Anti-malware protection deployment" "$am_details<p><strong>Remediation:</strong> Deploy anti-malware software on all systems commonly affected by malware. Consider using GCP security features like Shielded VMs and Security Command Center.</p>" "fail"
-    ((failed_checks++))
-else
-    add_html_section "$OUTPUT_FILE" "5.2.1 - Anti-malware protection deployment" "$am_details" "pass"
-    ((passed_checks++))
-fi
-((total_checks++))
-
-# Requirement 5.3: Anti-malware mechanisms are maintained and monitored
-add_html_section "$OUTPUT_FILE" "Requirement 5.3: Anti-malware maintenance and monitoring" "<p>Verifying anti-malware update mechanisms and monitoring...</p>" "info"
-
-# Check 5.3.1 - Anti-malware updates
-print_status "INFO" "Checking anti-malware update mechanisms..."
-update_details=$(check_antimalware_updates)
-if [[ "$update_details" == *"class='red'"* ]] || [[ "$update_details" == *"class='yellow'"* ]]; then
-    add_html_section "$OUTPUT_FILE" "5.3.1 - Anti-malware mechanism updates" "$update_details<p><strong>Remediation:</strong> Ensure anti-malware mechanisms are kept current via automatic updates. Use OS Config for patch management and Container Analysis for container security.</p>" "warning"
-    ((warning_checks++))
-else
-    add_html_section "$OUTPUT_FILE" "5.3.1 - Anti-malware mechanism updates" "$update_details" "pass"
-    ((passed_checks++))
-fi
-((total_checks++))
-
-# Check 5.3.2 - Periodic scans and active scanning
-print_status "INFO" "Checking for periodic malware scans..."
-scan_details=$(check_periodic_scans)
-if [[ "$scan_details" == *"class='red'"* ]] || [[ "$scan_details" == *"class='yellow'"* ]]; then
-    add_html_section "$OUTPUT_FILE" "5.3.2 - Periodic scans and active scanning" "$scan_details<p><strong>Remediation:</strong> Implement periodic scans and active or real-time scanning using Cloud Scheduler, Cloud Functions, or continuous behavioral analysis.</p>" "warning"
-    ((warning_checks++))
-else
-    add_html_section "$OUTPUT_FILE" "5.3.2 - Periodic scans and active scanning" "$scan_details" "pass"
-    ((passed_checks++))
-fi
-((total_checks++))
-
-# Network boundary protection
-add_html_section "$OUTPUT_FILE" "Network Boundary Malware Protection" "<p>Verifying anti-malware mechanisms at network entry and exit points...</p>" "info"
-
-print_status "INFO" "Checking for anti-malware at network boundaries..."
-boundary_details=$(check_boundary_protection)
-if [[ "$boundary_details" == *"class='red'"* ]]; then
-    add_html_section "$OUTPUT_FILE" "Malware Protection at Network Boundaries" "$boundary_details<p><strong>Remediation:</strong> Implement anti-malware mechanisms at network entry and exit points using Cloud Armor, VPC firewall rules, and other security controls.</p>" "fail"
-    ((failed_checks++))
-else
-    add_html_section "$OUTPUT_FILE" "Malware Protection at Network Boundaries" "$boundary_details<p><strong>Remediation:</strong> Review and enhance network boundary protections to include anti-malware capabilities.</p>" "warning"
-    ((warning_checks++))
-fi
-((total_checks++))
-
-# Manual verification requirements
-manual_checks="<p>Manual verification required for complete PCI DSS Requirement 5 compliance:</p>
-<ul>
-<li><strong>5.1:</strong> Governance and documentation of anti-malware policies and procedures</li>
-<li><strong>5.2.2:</strong> Verify anti-malware mechanisms can detect and address all known types of malware</li>
-<li><strong>5.3.3:</strong> Configure automatic scanning of removable electronic media</li>
-<li><strong>5.3.4:</strong> Enable and retain anti-malware audit logs per Requirement 10.5.1</li>
-<li><strong>5.3.5:</strong> Implement tamper protection to prevent unauthorized disabling or alteration</li>
-<li><strong>5.4.1:</strong> Implement anti-phishing mechanisms using Google Workspace security features</li>
-</ul>
-<p><strong>Recommendations:</strong></p>
-<ul>
-<li>Use Advanced Protection Program for high-risk users</li>
-<li>Implement Security Keys (FIDO2) for phishing-resistant authentication</li>
-<li>Configure Gmail security settings and Safe Browsing</li>
-<li>Enable Security Command Center for centralized threat detection</li>
-</ul>"
-
-add_html_section "$OUTPUT_FILE" "Manual Verification Requirements" "$manual_checks" "warning"
-((warning_checks++))
-((total_checks++))
-
-#----------------------------------------------------------------------
-
-#----------------------------------------------------------------------
-# FINAL REPORT
-#----------------------------------------------------------------------
-
-# Finalize HTML report using shared library
-# Add final summary metrics
-add_summary_metrics "$OUTPUT_FILE" "$total_checks" "$passed_checks" "$failed_checks" "$warning_checks"
-
-# Finalize HTML report using shared library
-finalize_report "$OUTPUT_FILE" "${REQUIREMENT_NUMBER}"
-
-# Display final summary using shared library
-# Display final summary using shared library
-print_status "INFO" "=== ASSESSMENT SUMMARY ==="
-print_status "INFO" "Total checks: $total_checks"
-print_status "PASS" "Passed: $passed_checks"
-print_status "FAIL" "Failed: $failed_checks"
-print_status "WARN" "Warnings: $warning_checks"
-print_status "INFO" "Report has been generated: $OUTPUT_FILE"
-print_status "PASS" "=================================================================="
+# Execute main function
+main "$@"

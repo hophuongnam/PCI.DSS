@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PCI DSS 4.0 - Requirement 3 Assessment Report</title>
+    <title>PCI DSS 4.0 - Requirement 4 Assessment Report</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -184,13 +184,13 @@
 </head>
 <body>
     <div class="container">
-        <h1>PCI DSS 4.0.1 - Requirement 3 Compliance Assessment</h1>
+        <h1>PCI DSS 4.0.1 - Requirement 4 Compliance Assessment Report</h1>
         
         <div class="info-table-container">
             <table class="info-table">
                 <tr>
                     <th>Assessment Date</th>
-                    <td>Mon Jun  9 21:45:57 +07 2025</td>
+                    <td>Mon Jun  9 22:08:25 +07 2025</td>
                 </tr>
                 <tr>
                     <th>GCP Account</th>
@@ -212,192 +212,60 @@
         <!-- Report content will be added here -->
         <div id="report-content">
 
-        <div class="section" id="section-storage_encryption">
-            <div class="section-header" onclick="toggleSection('storage_encryption')" aria-expanded="false">
-                <h3 style="margin: 0;">Storage Encryption Assessment (3.2-3.3)</h3>
+        <div class="section" id="section-project_secucollab">
+            <div class="section-header" onclick="toggleSection('project_secucollab')" aria-expanded="false">
+                <h3 style="margin: 0;">Project: secucollab</h3>
             </div>
-            <div class="section-content" id="content-storage_encryption">
-
-                <div class="check-item fail">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong>✗ Bucket namhp_temporary_bucket</strong>
-                        <span class="fail">FAIL</span>
-                    </div>
-                    <details style="margin-top: 10px;">
-                        <summary>Show Details</summary>
-                        <div style="margin-top: 10px; padding: 10px; background-color: #f9f9f9; border-radius: 3px;">
-                            <pre style="white-space: pre-wrap; margin: 0;">Default encryption only - consider CMEK</pre>
-                        </div>
-                    </details>
-                    <div class="recommendation">
-                        <strong>Recommendation:</strong><br>
-                        Consider implementing Customer-Managed Encryption Keys (CMEK) for enhanced security
-                    </div>
-                </div>
-
-                <div class="check-item fail">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong>✗ Bucket prism-evidence-secucollab</strong>
-                        <span class="fail">FAIL</span>
-                    </div>
-                    <details style="margin-top: 10px;">
-                        <summary>Show Details</summary>
-                        <div style="margin-top: 10px; padding: 10px; background-color: #f9f9f9; border-radius: 3px;">
-                            <pre style="white-space: pre-wrap; margin: 0;">Default encryption only - consider CMEK</pre>
-                        </div>
-                    </details>
-                    <div class="recommendation">
-                        <strong>Recommendation:</strong><br>
-                        Consider implementing Customer-Managed Encryption Keys (CMEK) for enhanced security
-                    </div>
-                </div>
-
-                <div class="check-item fail">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong>✗ Bucket prism-logs-secucollab</strong>
-                        <span class="fail">FAIL</span>
-                    </div>
-                    <details style="margin-top: 10px;">
-                        <summary>Show Details</summary>
-                        <div style="margin-top: 10px; padding: 10px; background-color: #f9f9f9; border-radius: 3px;">
-                            <pre style="white-space: pre-wrap; margin: 0;">Default encryption only - consider CMEK</pre>
-                        </div>
-                    </details>
-                    <div class="recommendation">
-                        <strong>Recommendation:</strong><br>
-                        Consider implementing Customer-Managed Encryption Keys (CMEK) for enhanced security
-                    </div>
-                </div>
-
-                <div class="check-item fail">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong>✗ Bucket secucollab.appspot.com</strong>
-                        <span class="fail">FAIL</span>
-                    </div>
-                    <details style="margin-top: 10px;">
-                        <summary>Show Details</summary>
-                        <div style="margin-top: 10px; padding: 10px; background-color: #f9f9f9; border-radius: 3px;">
-                            <pre style="white-space: pre-wrap; margin: 0;">Default encryption only - consider CMEK</pre>
-                        </div>
-                    </details>
-                    <div class="recommendation">
-                        <strong>Recommendation:</strong><br>
-                        Consider implementing Customer-Managed Encryption Keys (CMEK) for enhanced security
-                    </div>
-                </div>
-
-                <div class="check-item fail">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong>✗ Bucket secucollab.com</strong>
-                        <span class="fail">FAIL</span>
-                    </div>
-                    <details style="margin-top: 10px;">
-                        <summary>Show Details</summary>
-                        <div style="margin-top: 10px; padding: 10px; background-color: #f9f9f9; border-radius: 3px;">
-                            <pre style="white-space: pre-wrap; margin: 0;">Default encryption only - consider CMEK</pre>
-                        </div>
-                    </details>
-                    <div class="recommendation">
-                        <strong>Recommendation:</strong><br>
-                        Consider implementing Customer-Managed Encryption Keys (CMEK) for enhanced security
-                    </div>
-                </div>
-
-                <div class="check-item fail">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong>✗ Bucket secucollab_cloudbuild</strong>
-                        <span class="fail">FAIL</span>
-                    </div>
-                    <details style="margin-top: 10px;">
-                        <summary>Show Details</summary>
-                        <div style="margin-top: 10px; padding: 10px; background-color: #f9f9f9; border-radius: 3px;">
-                            <pre style="white-space: pre-wrap; margin: 0;">Default encryption only - consider CMEK</pre>
-                        </div>
-                    </details>
-                    <div class="recommendation">
-                        <strong>Recommendation:</strong><br>
-                        Consider implementing Customer-Managed Encryption Keys (CMEK) for enhanced security
-                    </div>
-                </div>
-
-                <div class="check-item fail">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong>✗ Bucket staging.secucollab.appspot.com</strong>
-                        <span class="fail">FAIL</span>
-                    </div>
-                    <details style="margin-top: 10px;">
-                        <summary>Show Details</summary>
-                        <div style="margin-top: 10px; padding: 10px; background-color: #f9f9f9; border-radius: 3px;">
-                            <pre style="white-space: pre-wrap; margin: 0;">Default encryption only - consider CMEK</pre>
-                        </div>
-                    </details>
-                    <div class="recommendation">
-                        <strong>Recommendation:</strong><br>
-                        Consider implementing Customer-Managed Encryption Keys (CMEK) for enhanced security
-                    </div>
-                </div>
-
-            </div> <!-- Close previous section content -->
-        </div> <!-- Close previous section -->
-        
-        <div class="section" id="section-database_encryption">
-            <div class="section-header" onclick="toggleSection('database_encryption')" aria-expanded="false">
-                <h3 style="margin: 0;">Database Encryption Assessment (3.4-3.5)</h3>
-            </div>
-            <div class="section-content" id="content-database_encryption">
+            <div class="section-content" id="content-project_secucollab">
 
                 <div class="check-item warning">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong>⚠ SQL Instance latest-monitorsql</strong>
+                        <strong>⚠ TLS/SSL Configuration Analysis</strong>
                         <span class="warning">WARNING</span>
                     </div>
                     <details style="margin-top: 10px;">
                         <summary>Show Details</summary>
                         <div style="margin-top: 10px; padding: 10px; background-color: #f9f9f9; border-radius: 3px;">
-                            <pre style="white-space: pre-wrap; margin: 0;">Using default encryption</pre>
+                            <pre style="white-space: pre-wrap; margin: 0;"><h4>Analysis of TLS/SSL configurations in project secucollab:</h4><ul><li>No SSL policies found - using default configurations</li><li><strong>HTTPS Load Balancers:</strong><ul><li>Proxy: secucollab-web-lb-target-proxy - No SSL Policy configured <span class='warning'>⚠️</span></li></ul></li></ul><p><strong>Findings:</strong> 1 TLS configuration issues require attention.</p></pre>
                         </div>
                     </details>
-                    <div class="recommendation">
-                        <strong>Recommendation:</strong><br>
-                        Consider implementing Customer-Managed Encryption Keys (CMEK) for enhanced security
+                </div>
+
+                <div class="check-item fail">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong>✗ SSL Certificate Inventory and Management</strong>
+                        <span class="fail">FAIL</span>
                     </div>
+                    <details style="margin-top: 10px;">
+                        <summary>Show Details</summary>
+                        <div style="margin-top: 10px; padding: 10px; background-color: #f9f9f9; border-radius: 3px;">
+                            <pre style="white-space: pre-wrap; margin: 0;"><h4>SSL Certificate inventory for project secucollab:</h4><ul><li><strong>Certificate:</strong> secucollab-com-ca<ul><li>Type: MANAGED</li><li>Created: 2021-06-28T01:42:19.019-07:00</li><li>Expires: 2025-07-30T12:09:16.000-07:00 <span class='fail'>❌ EXPIRED</span></li></ul></li><li><strong>Certificate:</strong> securevecors<ul><li>Type: MANAGED</li><li>Created: 2021-05-17T23:47:27.535-07:00</li><li>Expires: Managed certificate (auto-renewal)</li></ul></li></ul><p><strong>Summary:</strong> Found 2 SSL certificates (1 expiring/expired certificates require attention)</p></pre>
+                        </div>
+                    </details>
                 </div>
 
                 <div class="check-item warning">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong>⚠ SQL Instance prism-postgres</strong>
+                        <strong>⚠ Firewall Rules for Unencrypted Protocols</strong>
                         <span class="warning">WARNING</span>
                     </div>
                     <details style="margin-top: 10px;">
                         <summary>Show Details</summary>
                         <div style="margin-top: 10px; padding: 10px; background-color: #f9f9f9; border-radius: 3px;">
-                            <pre style="white-space: pre-wrap; margin: 0;">Using default encryption</pre>
+                            <pre style="white-space: pre-wrap; margin: 0;"><h4>Analysis of firewall rules allowing unencrypted protocols in project secucollab:</h4><ul><li><span class='warning'>⚠️ Warning:</span> Rule 'allow-internet-rdp' allows port 80 from restricted sources</li><li><span class='warning'>⚠️ Warning:</span> Rule 'allow-jump-mgmt' allows port 80 from restricted sources</li><li><span class='warning'>⚠️ Warning:</span> Rule 'monitor-lastest-allow-mgmt' allows port 80 from restricted sources</li><li>✅ No firewall rules found allowing unencrypted protocols from the internet</li></ul></pre>
                         </div>
                     </details>
-                    <div class="recommendation">
-                        <strong>Recommendation:</strong><br>
-                        Consider implementing Customer-Managed Encryption Keys (CMEK) for enhanced security
-                    </div>
                 </div>
-
-            </div> <!-- Close previous section content -->
-        </div> <!-- Close previous section -->
-        
-        <div class="section" id="section-key_management">
-            <div class="section-header" onclick="toggleSection('key_management')" aria-expanded="false">
-                <h3 style="margin: 0;">Key Management Assessment (3.6-3.7)</h3>
-            </div>
-            <div class="section-content" id="content-key_management">
 
                 <div class="check-item pass">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong>✓ Key Management</strong>
+                        <strong>✓ Cloud CDN and Cloud Armor Security Analysis</strong>
                         <span class="pass">PASS</span>
                     </div>
                     <details style="margin-top: 10px;">
                         <summary>Show Details</summary>
                         <div style="margin-top: 10px; padding: 10px; background-color: #f9f9f9; border-radius: 3px;">
-                            <pre style="white-space: pre-wrap; margin: 0;">Found 1 KMS keyrings in project secucollab</pre>
+                            <pre style="white-space: pre-wrap; margin: 0;"><h4>Cloud CDN and Cloud Armor security analysis for project secucollab:</h4><ul><li>No backend services found</li><li>No Cloud Armor security policies configured</li></ul></pre>
                         </div>
                     </details>
                 </div>
@@ -405,9 +273,9 @@
         </div> <!-- Close report-content -->
         
         <div class="timestamp">
-            <p><strong>Report Generated:</strong> Mon Jun  9 21:46:09 +07 2025</p>
+            <p><strong>Report Generated:</strong> Mon Jun  9 22:08:39 +07 2025</p>
             <p><strong>PCI DSS Version:</strong> 4.0.1</p>
-            <p><strong>Requirement:</strong> 3</p>
+            <p><strong>Requirement:</strong> 4</p>
         </div>
     </div> <!-- Close container -->
     
