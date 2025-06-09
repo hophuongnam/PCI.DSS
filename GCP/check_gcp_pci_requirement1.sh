@@ -92,13 +92,7 @@ else
     DEFAULT_ORG=$(gcloud organizations list --format="value(name)" --limit=1 2>/dev/null | sed 's/organizations\///')
 fi
 
-# Function to print colored output
-print_status() {
-    local color=$1
-    local message=$2
-    echo -e "${color}${message}${NC}"
-}
-
+# print_status function provided by gcp_common.sh framework library
 # HTML functions now provided by gcp_html_report.sh framework library
 
 # Function to check GCP API access
