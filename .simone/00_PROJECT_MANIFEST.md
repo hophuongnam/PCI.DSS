@@ -83,6 +83,12 @@ This project follows a milestone-based development approach.
 - [✅] [TX001: Create GCP Script For Requirement 9](04_GENERAL_TASKS/TX001_Create_GCP_Script_For_Requirement_9.md) - Status: Completed
 - [✅] [TX002: Check GCP Requirement 1 Script and Rewrite if Needed](04_GENERAL_TASKS/TX002_Check_GCP_Requirement1_Script.md) - Status: Completed
 - [✅] [TX003: GCP Requirement 2 Framework Integration and Coverage Analysis](04_GENERAL_TASKS/TX003_GCP_Requirement2_Framework_Integration_Coverage_COMPLETED.md) - Status: Completed
+- [ ] [TX004: Refactor GCP Check for Requirement 3 to Follow Shared Architecture](04_GENERAL_TASKS/TX004_Refactor_GCP_Requirement3_Shared_Architecture.md) - Status: Not Started
+- [ ] [TX005: Refactor GCP Check for Requirement 4 to Follow Shared Architecture](04_GENERAL_TASKS/TX005_Refactor_GCP_Requirement4_Shared_Architecture.md) - Status: Not Started
+- [ ] [TX006: Refactor GCP Check for Requirement 5 to Follow Shared Architecture](04_GENERAL_TASKS/TX006_Refactor_GCP_Requirement5_Shared_Architecture.md) - Status: Not Started
+- [ ] [TX007: Refactor GCP Check for Requirement 6 to Follow Shared Architecture](04_GENERAL_TASKS/TX007_Refactor_GCP_Requirement6_Shared_Architecture.md) - Status: Not Started
+- [ ] [TX008: Refactor GCP Check for Requirement 7 to Follow Shared Architecture](04_GENERAL_TASKS/TX008_Refactor_GCP_Requirement7_Shared_Architecture.md) - Status: Not Started
+- [ ] [TX009: Refactor GCP Check for Requirement 8 to Follow Shared Architecture](04_GENERAL_TASKS/TX009_Refactor_GCP_Requirement8_Shared_Architecture.md) - Status: Not Started
 
 ## 5. Quick Links
 
