@@ -247,7 +247,7 @@ echo ""
 #----------------------------------------------------------------------
 # SECTION 1: PERMISSIONS CHECK
 #----------------------------------------------------------------------
-add_html_section "$OUTPUT_FILE" "GCP Permissions Check" "<p>Verifying access to required GCP services for PCI Requirement 1 assessment...</p>" "info"
+add_check_result "$OUTPUT_FILE" "info" "GCP Permissions Check" "<p>Verifying access to required GCP services for PCI Requirement 1 assessment...</p>"
 
 print_status "INFO" "=== CHECKING REQUIRED GCP PERMISSIONS ==="
 
@@ -300,7 +300,7 @@ fi
 
 if [ $permissions_percentage -lt 70 ]; then
     print_status "FAIL" "WARNING: Insufficient permissions to perform a complete PCI Requirement 1 assessment."
-    add_html_section "$OUTPUT_FILE" "Permission Assessment" "<p class='red'>Insufficient permissions detected. Only $permissions_percentage% of required permissions are available.</p><p>Without these permissions, the assessment will be incomplete and may not accurately reflect your PCI DSS compliance status.</p>" "fail"
+    add_check_result "$OUTPUT_FILE" "fail" "Permission Assessment" "<p class='red'>Insufficient permissions detected. Only $permissions_percentage% of required permissions are available.</p><p>Without these permissions, the assessment will be incomplete and may not accurately reflect your PCI DSS compliance status.</p>"
     read -p "Continue with limited assessment? (y/n): " CONTINUE
     if [[ ! $CONTINUE =~ ^[Yy]$ ]]; then
         echo "Assessment aborted."
@@ -308,7 +308,7 @@ if [ $permissions_percentage -lt 70 ]; then
     fi
 else
     print_status "PASS" "Permission check complete: $permissions_percentage% permissions available"
-    add_html_section "$OUTPUT_FILE" "Permission Assessment" "<p class='green'>Sufficient permissions detected. $permissions_percentage% of required permissions are available.</p>" "pass"
+    add_check_result "$OUTPUT_FILE" "pass" "Permission Assessment" "<p class='green'>Sufficient permissions detected. $permissions_percentage% of required permissions are available.</p>"
 fi
 
 # Reset counters for actual compliance checks
@@ -320,7 +320,7 @@ failed_checks=0
 #----------------------------------------------------------------------
 # SECTION 2: DETERMINE NETWORKS TO CHECK
 #----------------------------------------------------------------------
-add_html_section "$OUTPUT_FILE" "Target VPC Networks" "<p>Identifying VPC networks for assessment...</p>" "info"
+add_check_result "$OUTPUT_FILE" "info" "Target VPC Networks" "<p>Identifying VPC networks for assessment...</p>"
 
 print_status "INFO" "=== IDENTIFYING TARGET VPC NETWORKS ==="
 
@@ -329,16 +329,16 @@ if [ "$CDE_NETWORKS" == "all" ]; then
     GET_NETWORKS_RESULT=$?
     if [ $GET_NETWORKS_RESULT -ne 0 ]; then
         print_status "FAIL" "Failed to retrieve VPC network information. Check your permissions."
-        add_html_section "$OUTPUT_FILE" "Network Identification" "<p class='red'>Failed to retrieve VPC network information.</p>" "fail"
+        add_check_result "$OUTPUT_FILE" "fail" "Network Identification" "<p class='red'>Failed to retrieve VPC network information.</p>"
         exit 1
     else
         network_count=$(echo "$TARGET_NETWORKS" | wc -l)
-        add_html_section "$OUTPUT_FILE" "Network Identification" "<p>All $network_count VPC networks will be assessed:</p><pre>$TARGET_NETWORKS</pre>" "info"
+        add_check_result "$OUTPUT_FILE" "info" "Network Identification" "<p>All $network_count VPC networks will be assessed:</p><pre>$TARGET_NETWORKS</pre>"
     fi
 else
     TARGET_NETWORKS=$(echo $CDE_NETWORKS | tr ',' '\n')
     network_count=$(echo "$TARGET_NETWORKS" | wc -l)
-    add_html_section "$OUTPUT_FILE" "Network Identification" "<p>Assessment will be performed on $network_count specified networks:</p><pre>$TARGET_NETWORKS</pre>" "info"
+    add_check_result "$OUTPUT_FILE" "info" "Network Identification" "<p>Assessment will be performed on $network_count specified networks:</p><pre>$TARGET_NETWORKS</pre>"
 fi
 
 #----------------------------------------------------------------------
@@ -398,7 +398,7 @@ fi
 
 firewall_details+="</ul>"
 
-add_html_section "$OUTPUT_FILE" "1.2.5 - Ports, protocols, and services inventory" "$firewall_details" "info"
+add_check_result "$OUTPUT_FILE" "info" "1.2.5 - Ports, protocols, and services inventory" "$firewall_details"
 ((total_checks++))
 
 # Check 1.2.6 - Security features for insecure services/protocols
@@ -449,11 +449,11 @@ insecure_details+="</ul>"
 
 if [ "$insecure_services" = false ]; then
     print_status "PASS" "No common insecure services/protocols detected in firewall rules"
-    add_html_section "$OUTPUT_FILE" "1.2.6 - Security features for insecure services/protocols" "<p class='green'>No common insecure services/protocols detected in firewall rules</p>" "pass"
+    add_check_result "$OUTPUT_FILE" "pass" "1.2.6 - Security features for insecure services/protocols" "<p class='green'>No common insecure services/protocols detected in firewall rules</p>"
     ((passed_checks++))
 else
     print_status "FAIL" "Insecure services/protocols detected in firewall rules"
-    add_html_section "$OUTPUT_FILE" "1.2.6 - Security features for insecure services/protocols" "$insecure_details" "fail"
+    add_check_result "$OUTPUT_FILE" "fail" "1.2.6 - Security features for insecure services/protocols" "$insecure_details"
     ((failed_checks++))
 fi
 ((total_checks++))
@@ -466,11 +466,11 @@ print_status "INFO" "Checking for Security Command Center and monitoring configu
 scc_enabled=$(gcloud security-center organizations list 2>/dev/null | wc -l)
 if [ $scc_enabled -gt 0 ]; then
     print_status "PASS" "Security Command Center is available for monitoring"
-    add_html_section "$OUTPUT_FILE" "1.2.7 - NSC configuration monitoring" "<p class='green'>Security Command Center is available for monitoring NSC configurations.</p>" "pass"
+    add_check_result "$OUTPUT_FILE" "pass" "1.2.7 - NSC configuration monitoring" "<p class='green'>Security Command Center is available for monitoring NSC configurations.</p>"
     ((passed_checks++))
 else
     print_status "WARN" "Security Command Center not detected"
-    add_html_section "$OUTPUT_FILE" "1.2.7 - NSC configuration monitoring" "<p class='yellow'>Security Command Center not detected. Consider enabling for automated monitoring.</p>" "warning"
+    add_check_result "$OUTPUT_FILE" "warning" "1.2.7 - NSC configuration monitoring" "<p class='yellow'>Security Command Center not detected. Consider enabling for automated monitoring.</p>"
     ((warning_checks++))
 fi
 ((total_checks++))
@@ -487,11 +487,11 @@ total_admin_bindings=$((compute_admin_bindings + network_admin_bindings))
 
 if [ $total_admin_bindings -gt 5 ]; then
     print_status "WARN" "Multiple users/service accounts have network administration privileges"
-    add_html_section "$OUTPUT_FILE" "1.2.8 - NSC configuration files security" "<p class='yellow'>Multiple users/service accounts have network administration privileges ($total_admin_bindings total). Review for least privilege compliance.</p>" "warning"
+    add_check_result "$OUTPUT_FILE" "warning" "1.2.8 - NSC configuration files security" "<p class='yellow'>Multiple users/service accounts have network administration privileges ($total_admin_bindings total). Review for least privilege compliance.</p>"
     ((warning_checks++))
 else
     print_status "PASS" "Limited number of network administrators detected"
-    add_html_section "$OUTPUT_FILE" "1.2.8 - NSC configuration files security" "<p class='green'>Limited number of network administrators detected ($total_admin_bindings total).</p>" "pass"
+    add_check_result "$OUTPUT_FILE" "pass" "1.2.8 - NSC configuration files security" "<p class='green'>Limited number of network administrators detected ($total_admin_bindings total).</p>"
     ((passed_checks++))
 fi
 ((total_checks++))
@@ -549,7 +549,7 @@ done
 
 inbound_restriction_details+="</ul>"
 
-add_html_section "$OUTPUT_FILE" "1.3.1 - Inbound traffic to CDE restriction" "$inbound_restriction_details" "warning"
+add_check_result "$OUTPUT_FILE" "warning" "1.3.1 - Inbound traffic to CDE restriction" "$inbound_restriction_details"
 ((total_checks++))
 ((warning_checks++))
 
@@ -593,7 +593,7 @@ done
 
 outbound_restriction_details+="</ul>"
 
-add_html_section "$OUTPUT_FILE" "1.3.2 - Outbound traffic from CDE restriction" "$outbound_restriction_details" "warning"
+add_check_result "$OUTPUT_FILE" "warning" "1.3.2 - Outbound traffic from CDE restriction" "$outbound_restriction_details"
 ((total_checks++))
 ((warning_checks++))
 
@@ -647,7 +647,7 @@ fi
 
 private_ip_details+="</ul>"
 
-add_html_section "$OUTPUT_FILE" "1.3.3 - Private IP filtering" "$private_ip_details" "info"
+add_check_result "$OUTPUT_FILE" "info" "1.3.3 - Private IP filtering" "$private_ip_details"
 ((total_checks++))
 
 #----------------------------------------------------------------------
@@ -709,7 +709,7 @@ done
 
 connection_controls_details+="</ul>"
 
-add_html_section "$OUTPUT_FILE" "1.4.1 - Network connection controls" "$connection_controls_details" "info"
+add_check_result "$OUTPUT_FILE" "info" "1.4.1 - Network connection controls" "$connection_controls_details"
 ((total_checks++))
 
 # Check 1.4.2 - Private IP address filtering
@@ -748,14 +748,14 @@ if [ -n "$vsc_perimeters" ]; then
     vsc_details+="</ul>"
     vsc_details+="<li>These provide additional private IP filtering controls</li>"
     
-    add_html_section "$OUTPUT_FILE" "1.4.2 - Private IP address filtering" "$vsc_details" "pass"
+    add_check_result "$OUTPUT_FILE" "pass" "1.4.2 - Private IP address filtering" "$vsc_details"
     ((passed_checks++))
 else
     print_status "WARN" "No VPC Service Controls perimeters detected"
     vsc_details+="<li class='yellow'>No VPC Service Controls perimeters detected</li>"
     vsc_details+="<li>Consider implementing VPC Service Controls for enhanced private IP filtering</li>"
     
-    add_html_section "$OUTPUT_FILE" "1.4.2 - Private IP address filtering" "$vsc_details" "warning"
+    add_check_result "$OUTPUT_FILE" "warning" "1.4.2 - Private IP address filtering" "$vsc_details"
     ((warning_checks++))
 fi
 
@@ -820,7 +820,7 @@ fi
 
 rule_management_details+="</ul>"
 
-add_html_section "$OUTPUT_FILE" "1.5.1 - Firewall rule management" "$rule_management_details" "info"
+add_check_result "$OUTPUT_FILE" "info" "1.5.1 - Firewall rule management" "$rule_management_details"
 ((total_checks++))
 
 #----------------------------------------------------------------------
