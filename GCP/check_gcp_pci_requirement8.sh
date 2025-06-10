@@ -409,6 +409,12 @@ main() {
     
     add_section "$OUTPUT_FILE" "manual_verification" "Manual Verification Requirements" "$manual_requirements"
     
+    # Close the manual verification section before adding summary
+    echo "
+            </div> <!-- Close manual_verification section content -->
+        </div> <!-- Close manual_verification section -->
+        " >> "$OUTPUT_FILE"
+    
     # Add summary metrics before finalizing
     add_summary_metrics "$OUTPUT_FILE" "$total_checks" "$passed_checks" "$failed_checks" "$warning_checks"
     
