@@ -15,74 +15,69 @@ source "$LIB_DIR/gcp_html_report.sh" || exit 1
 # Script-specific variables
 REQUIREMENT_NUMBER="7"
 
-# Initialize environment
-setup_environment "requirement7_assessment.log" || exit 1
+# Counters for checks  
+total_checks=0
+passed_checks=0
+warning_checks=0
+failed_checks=0
 
-# Parse command line arguments using shared function
-parse_common_arguments "$@"
-case $? in
-    1) exit 1 ;;  # Error
-    2) exit 0 ;;  # Help displayed
-esac
-
-# Setup report configuration using shared library
-load_requirement_config "${REQUIREMENT_NUMBER}"
-
-# Validate scope and setup project context using shared library
-setup_assessment_scope "$SCOPE" "$PROJECT_ID" "$ORG_ID" || exit 1
-
-# Validate GCP environment
-validate_prerequisites || exit 1
-
-# Register required permissions using shared library
-register_required_permissions "$REQUIREMENT_NUMBER" \
-    "resourcemanager.projects.getIamPolicy" \
-    "iam.serviceAccounts.list" \
-    "iam.roles.list" \
-    "compute.networks.list" \
-    "compute.subnetworks.list" \
-    "iap.web.getIamPolicy" \
-    "compute.firewalls.list" \
+# Define required permissions for Requirement 7
+declare -a REQ7_PERMISSIONS=(
+    "resourcemanager.projects.getIamPolicy"
+    "iam.serviceAccounts.list"
+    "iam.roles.list"
+    "compute.networks.list"
+    "compute.subnetworks.list"
+    "iap.web.getIamPolicy"
+    "compute.firewalls.list"
     "storage.buckets.getIamPolicy"
+    "resourcemanager.projects.get"
+    "resourcemanager.organizations.get"
+    "iam.serviceAccounts.getIamPolicy"
+    "compute.instances.list"
+)
 
-# Check permissions using shared library
-if ! check_all_permissions; then
-    prompt_continue_limited || exit 1
-fi
+# Function to show help
+show_help() {
+    echo "GCP PCI DSS Requirement 7 Assessment Script (Framework Version)"
+    echo "=============================================================="
+    echo ""
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  -s, --scope SCOPE          Assessment scope: 'project' or 'organization' (default: project)"
+    echo "  -p, --project PROJECT_ID   Specific project to assess (overrides current gcloud config)"
+    echo "  -o, --org ORG_ID          Specific organization ID to assess (required for organization scope)"
+    echo "  -f, --format FORMAT       Output format: 'html' or 'text' (default: html)"
+    echo "  -v, --verbose             Enable verbose output"
+    echo "  -h, --help                Show this help message"
+    echo ""
+    echo "Examples:"
+    echo "  $0                                    # Assess current project"
+    echo "  $0 --scope project --project my-proj # Assess specific project" 
+    echo "  $0 --scope organization --org 123456 # Assess entire organization"
+    echo ""
+    echo "Note: Organization scope requires appropriate permissions across all projects in the organization."
+}
 
-# Initialize HTML report using shared library
-OUTPUT_FILE="${REPORT_DIR}/pci_req${REQUIREMENT_NUMBER}_report_$(date +%Y%m%d_%H%M%S).html"
-initialize_report "$OUTPUT_FILE" "PCI DSS 4.0.1 - Requirement $REQUIREMENT_NUMBER Compliance Assessment Report" "${REQUIREMENT_NUMBER}"
+# Note: Initialization moved to main function to follow modern framework pattern
 
-print_status "INFO" "============================================="
-print_status "INFO" "  PCI DSS 4.0.1 - Requirement 7 (GCP)"
-print_status "INFO" "============================================="
-echo ""
-
-# Display scope information using shared library
-print_status "INFO" "Assessment scope: ${ASSESSMENT_SCOPE:-project}"
-if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
-    print_status "INFO" "Organization ID: ${ORG_ID}"
-else
-    print_status "INFO" "Project ID: ${PROJECT_ID}"
-fi
-
-echo ""
-echo "Starting assessment at $(date)"
-echo ""
+# Note: Report initialization moved to main function
 
 # Function to assess access governance and overly permissive policies
 assess_access_governance() {
     local project_id="$1"
-    debug_log "Assessing access governance for project: $project_id"
+    log_debug "Assessing access governance for project: $project_id"
     
     # 7.1.1 - Security policies and operational procedures for access control
-    add_check_result "7.1.1 - Access control policies documentation" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "7.1.1 - Access control policies documentation" \
         "Verify documented security policies for Requirement 7 access controls are maintained, up to date, in use, and known to affected parties"
+    ((total_checks++))
     
     # 7.1.2 - Roles and responsibilities for access control
-    add_check_result "7.1.2 - Access control roles and responsibilities" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "info" "7.1.2 - Access control roles and responsibilities" \
         "Verify roles and responsibilities for Requirement 7 activities are documented, assigned, and understood"
+    ((total_checks++))
     
     # Check for overly permissive IAM policies
     local project_policy
@@ -93,13 +88,20 @@ assess_access_governance() {
         local owner_count
         owner_count=$(echo "$project_policy" | jq -r '.bindings[] | select(.role=="roles/owner") | .members[]' 2>/dev/null | wc -l)
         
+        # Ensure owner_count is a clean number
+        owner_count=$(echo "$owner_count" | tr -d '\n\r' | grep -o '[0-9]*' | head -1)
+        [[ -z "$owner_count" ]] && owner_count=0
+        
         if [[ "$owner_count" -gt 2 ]]; then
-            add_check_result "Project owner role assignment" "FAIL" \
+            add_check_result "$OUTPUT_FILE" "fail" "Project owner role assignment" \
                 "Project has $owner_count owners (recommend ≤2) - excessive administrative privileges violate least privilege principle"
+            ((failed_checks++))
         else
-            add_check_result "Project owner role assignment" "PASS" \
+            add_check_result "$OUTPUT_FILE" "pass" "Project owner role assignment" \
                 "Project owner roles appropriately limited ($owner_count owners)"
+            ((passed_checks++))
         fi
+        ((total_checks++))
         
         # Check for project editor roles
         local editor_count
@@ -133,7 +135,7 @@ assess_access_governance() {
 # Function to assess role-based access control and service account management
 assess_role_based_access() {
     local project_id="$1"
-    debug_log "Assessing role-based access control for project: $project_id"
+    log_debug "Assessing role-based access control for project: $project_id"
     
     # 7.2.1 - Role-based access control implementation
     add_check_result "7.2.1 - Role-based access control system" "MANUAL" \
@@ -218,7 +220,7 @@ assess_role_based_access() {
 # Function to assess access control systems with VPC and IAP integration
 assess_access_control_systems() {
     local project_id="$1"
-    debug_log "Assessing access control systems for project: $project_id"
+    log_debug "Assessing access control systems for project: $project_id"
     
     # 7.2.2 - Access is assigned based on job classification and function
     add_check_result "7.2.2 - Job function-based access assignment" "MANUAL" \
@@ -285,7 +287,7 @@ assess_access_control_systems() {
 # Function to assess least privilege implementation
 assess_least_privilege() {
     local project_id="$1"
-    debug_log "Assessing least privilege implementation for project: $project_id"
+    log_debug "Assessing least privilege implementation for project: $project_id"
     
     # 7.2.4 - Least privilege access controls
     add_check_result "7.2.4 - Least privilege implementation" "MANUAL" \
@@ -348,11 +350,11 @@ assess_project() {
         local project_name=$(echo "$project_data" | cut -d'|' -f2)
         
         print_status "INFO" "Assessing project: $project_name ($project_id)"
-        add_section "Project: $project_name ($project_id)"
+        add_section "$OUTPUT_FILE" "project_${project_id}" "Project: $project_name ($project_id)" "Assessment results for project $project_name ($project_id)"
     else
         project_id="$PROJECT_ID"
         print_status "INFO" "Assessing project: $project_id"
-        add_section "PCI DSS Requirement 7 Assessment"
+        add_section "$OUTPUT_FILE" "requirement7_assessment" "PCI DSS Requirement 7 Assessment" "Access control assessment for project $project_id"
     fi
     
     # Execute all assessment functions
@@ -362,33 +364,88 @@ assess_project() {
     assess_least_privilege "$project_id"
 }
 
-# Main execution logic with project iteration pattern
-if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
-    local projects_data
-    projects_data=$(get_projects_in_scope | format_project_data)
+# Main execution function
+main() {
+    # Setup environment and parse command line arguments
+    setup_environment "requirement7_assessment.log"
+    parse_common_arguments "$@"
+    case $? in
+        1) exit 1 ;;  # Error
+        2) exit 0 ;;  # Help displayed
+    esac
     
-    if [[ -z "$projects_data" ]]; then
-        print_status "ERROR" "No projects found in organization scope"
+    # Validate GCP environment
+    validate_prerequisites || exit 1
+    
+    # Check permissions using the comprehensive permission check
+    if ! check_required_permissions "${REQ7_PERMISSIONS[@]}"; then
         exit 1
     fi
     
-    print_status "INFO" "Found $(echo "$projects_data" | wc -l) projects in scope"
+    # Setup assessment scope
+    setup_assessment_scope || exit 1
     
-    while IFS= read -r project_data; do
-        [[ -n "$project_data" ]] && assess_project "$project_data"
-    done <<< "$projects_data"
-else
-    assess_project "$PROJECT_ID"
-fi
+    # Configure HTML report
+    OUTPUT_FILE="${REPORT_DIR}/pci_req${REQUIREMENT_NUMBER}_report_$(date +%Y%m%d_%H%M%S).html"
+    initialize_report "$OUTPUT_FILE" "PCI DSS 4.0.1 - Requirement $REQUIREMENT_NUMBER Compliance Assessment Report" "${REQUIREMENT_NUMBER}"
+    
+    print_status "info" "============================================="
+    print_status "info" "  PCI DSS 4.0.1 - Requirement 7 (GCP)"
+    print_status "info" "============================================="
+    echo ""
+    
+    # Display scope information
+    print_status "info" "Assessment scope: ${ASSESSMENT_SCOPE:-project}"
+    if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
+        print_status "info" "Organization ID: ${ORG_ID}"
+    else
+        print_status "info" "Project ID: ${PROJECT_ID}"
+    fi
+    
+    echo ""
+    echo "Starting assessment at $(date)"
+    echo ""
+    
+    log_debug "Starting PCI DSS Requirement 7 assessment"
+    
+    # Main execution logic with project iteration pattern
+    if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
+        local projects_data
+        projects_data=$(get_projects_in_scope | format_project_data)
+        
+        if [[ -z "$projects_data" ]]; then
+            print_status "ERROR" "No projects found in organization scope"
+            exit 1
+        fi
+        
+        print_status "INFO" "Found $(echo "$projects_data" | wc -l) projects in scope"
+        
+        while IFS= read -r project_data; do
+            [[ -n "$project_data" ]] && assess_project "$project_data"
+        done <<< "$projects_data"
+    else
+        assess_project "$PROJECT_ID"
+    fi
+    
+    # Add summary metrics before finalizing
+    add_summary_metrics "$OUTPUT_FILE" "$total_checks" "$passed_checks" "$failed_checks" "$warning_checks"
+    
+    # Finalize the HTML report
+    finalize_report "$OUTPUT_FILE" "$REQUIREMENT_NUMBER"
+    
+    echo ""
+    print_status "PASS" "======================= ASSESSMENT SUMMARY ======================="
+    echo "Total checks performed: $total_checks"
+    echo "Passed checks: $passed_checks"
+    echo "Failed checks: $failed_checks"
+    echo "Warning checks: $warning_checks"
+    print_status "PASS" "=================================================================="
+    echo ""
+    print_status "INFO" "Report has been generated: $OUTPUT_FILE"
+    print_status "PASS" "=================================================================="
+    
+    return 0
+}
 
-# Finalize the HTML report
-finalize_report
-
-print_status "INFO" "Assessment completed"
-print_status "INFO" "Report saved to: $OUTPUT_FILE"
-
-# Summary
-echo ""
-echo "Assessment Summary:"
-echo "=================="
-display_summary
+# Execute main function
+main "$@"

@@ -15,24 +15,16 @@ source "$LIB_DIR/gcp_html_report.sh" || exit 1
 # Script-specific variables
 REQUIREMENT_NUMBER="6"
 
-# Initialize environment
-setup_environment || exit 1
+# Counters for checks  
+total_checks=0
+passed_checks=0
+warning_checks=0
+failed_checks=0
 
-# Parse command line arguments using shared function
-parse_common_arguments "$@"
-case $? in
-    1) exit 1 ;;  # Error
-    2) exit 0 ;;  # Help displayed
-esac
+# Note: Initialization moved to main function to follow modern framework pattern
 
-# Setup report configuration using shared library
-load_requirement_config "${REQUIREMENT_NUMBER}"
-
-# Validate scope and setup project context using shared library
-setup_assessment_scope || exit 1
-
-# Register required permissions for Requirement 6
-REQ6_PERMISSIONS=(
+# Define required permissions for Requirement 6
+declare -a REQ6_PERMISSIONS=(
     "cloudbuild.builds.list"
     "container.images.list"
     "compute.securityPolicies.list"
@@ -41,25 +33,46 @@ REQ6_PERMISSIONS=(
     "compute.urlMaps.list"
     "storage.buckets.list"
     "source.repos.list"
+    "compute.backendServices.list"
+    "artifactregistry.repositories.list"
+    "secretmanager.secrets.list"
+    "cloudkms.keyRings.list"
+    "binaryauthorization.policy.getIamPolicy"
+    "resourcemanager.projects.get"
+    "resourcemanager.organizations.get"
 )
 
-register_required_permissions "$REQUIREMENT_NUMBER" "${REQ6_PERMISSIONS[@]}"
+# Function to show help
+show_help() {
+    echo "GCP PCI DSS Requirement 6 Assessment Script (Framework Version)"
+    echo "=============================================================="
+    echo ""
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  -s, --scope SCOPE          Assessment scope: 'project' or 'organization' (default: project)"
+    echo "  -p, --project PROJECT_ID   Specific project to assess (overrides current gcloud config)"
+    echo "  -o, --org ORG_ID          Specific organization ID to assess (required for organization scope)"
+    echo "  -f, --format FORMAT       Output format: 'html' or 'text' (default: html)"
+    echo "  -v, --verbose             Enable verbose output"
+    echo "  -h, --help                Show this help message"
+    echo ""
+    echo "Examples:"
+    echo "  $0                                    # Assess current project"
+    echo "  $0 --scope project --project my-proj # Assess specific project" 
+    echo "  $0 --scope organization --org 123456 # Assess entire organization"
+    echo ""
+    echo "Note: Organization scope requires appropriate permissions across all projects in the organization."
+}
 
-# Validate GCP environment and check permissions
-validate_prerequisites || exit 1
-if ! check_all_permissions; then
-    prompt_continue_limited || exit 1
-fi
-
-# Initialize HTML report using modern framework pattern
-initialize_report "PCI DSS Requirement $REQUIREMENT_NUMBER Assessment" "$ASSESSMENT_SCOPE"
+# Note: Report initialization moved to main function
 
 
 # Assessment function for secure development processes (PCI DSS 6.1, 6.2)
 assess_secure_development() {
     local project_id="$1"
     
-    info_log "Assessing secure development processes for project: $project_id"
+    log_debug "Assessing secure development processes for project: $project_id"
     
     local check_status="PASS"
     local details=""
@@ -120,16 +133,17 @@ assess_secure_development() {
     details+="<li>Code review processes for security</li>"
     details+="<li>Static and dynamic application security testing</li></ul>"
     
-    add_check_result "Secure Development Processes" "$check_status" "$details"
+    add_check_result "$OUTPUT_FILE" "info" "Secure Development Processes" "$details"
+    ((total_checks++))
     
-    debug_log "Secure development assessment complete: $check_status ($issues_found issues)"
+    log_debug "Secure development assessment complete: $check_status ($issues_found issues)"
 }
 
 # Assessment function for vulnerability management (PCI DSS 6.3)
 assess_vulnerability_management() {
     local project_id="$1"
     
-    info_log "Assessing vulnerability management for project: $project_id"
+    log_debug "Assessing vulnerability management for project: $project_id"
     
     local check_status="PASS"
     local details=""
@@ -185,6 +199,9 @@ assess_vulnerability_management() {
             # Check for vulnerabilities
             local vulns
             vulns=$(gcloud container images scan "$image" $gcloud_cmd_prefix --format="value(vulnerabilities.discovery.vulnerability)" 2>/dev/null | grep -c "CRITICAL\|HIGH" 2>/dev/null || echo "0")
+            # Ensure vulns is a single number
+            vulns=$(echo "$vulns" | head -1 | tr -d '\n\r' | grep -o '[0-9]*' | head -1)
+            [[ -z "$vulns" ]] && vulns=0
             
             if [[ "$vulns" -gt 0 ]]; then
                 details+="<li><span class='check-fail'>$image - $vulns high/critical vulnerabilities</span></li>"
@@ -209,16 +226,17 @@ assess_vulnerability_management() {
     details+="<li>Timely remediation of critical and high vulnerabilities</li>"
     details+="<li>Security monitoring and alerting for new vulnerabilities</li></ul>"
     
-    add_check_result "Vulnerability Management" "$check_status" "$details"
+    add_check_result "$OUTPUT_FILE" "info" "Vulnerability Management" "$details"
+    ((total_checks++))
     
-    debug_log "Vulnerability management assessment complete: $check_status ($critical_vulns critical vulnerabilities)"
+    log_debug "Vulnerability management assessment complete: $check_status ($critical_vulns critical vulnerabilities)"
 }
 
 # Assessment function for web application protection (PCI DSS 6.4)
 assess_web_protection() {
     local project_id="$1"
     
-    info_log "Assessing web application protection for project: $project_id"
+    log_debug "Assessing web application protection for project: $project_id"
     
     local check_status="PASS"
     local details=""
@@ -292,16 +310,17 @@ assess_web_protection() {
     details+="<li>Regular security testing and penetration testing</li>"
     details+="<li>SSL/TLS encryption for data transmission</li></ul>"
     
-    add_check_result "Web Application Protection" "$check_status" "$details"
+    add_check_result "$OUTPUT_FILE" "info" "Web Application Protection" "$details"
+    ((total_checks++))
     
-    debug_log "Web protection assessment complete: $check_status ($unprotected_services unprotected services)"
+    log_debug "Web protection assessment complete: $check_status ($unprotected_services unprotected services)"
 }
 
 # Assessment function for change management (PCI DSS 6.5)
 assess_change_management() {
     local project_id="$1"
     
-    info_log "Assessing change management processes for project: $project_id"
+    log_debug "Assessing change management processes for project: $project_id"
     
     local check_status="PASS"
     local details=""
@@ -346,6 +365,8 @@ assess_change_management() {
         for service in $services; do
             local versions_count
             versions_count=$(echo "$app_versions" | grep "^$service" | wc -l)
+            versions_count=$(echo "$versions_count" | tr -d '\n\r' | grep -o '[0-9]*' | head -1)
+            [[ -z "$versions_count" ]] && versions_count=0
             details+="<li><span class='check-pass'>Service $service: $versions_count versions</span></li>"
         done
         details+="</ul>"
@@ -382,6 +403,8 @@ assess_change_management() {
         details+="<p><strong>CI/CD Pipeline Activity:</strong></p>"
         local recent_builds
         recent_builds=$(echo "$builds" | wc -l)
+        recent_builds=$(echo "$recent_builds" | tr -d '\n\r' | grep -o '[0-9]*' | head -1)
+        [[ -z "$recent_builds" ]] && recent_builds=0
         details+="<p>Recent builds detected ($recent_builds) - Indicates active CI/CD processes</p>"
     fi
     
@@ -393,16 +416,17 @@ assess_change_management() {
     details+="<li>Automated testing before production deployment</li>"
     details+="<li>Rollback procedures for failed deployments</li></ul>"
     
-    add_check_result "Change Management" "$check_status" "$details"
+    add_check_result "$OUTPUT_FILE" "info" "Change Management" "$details"
+    ((total_checks++))
     
-    debug_log "Change management assessment complete: $check_status ($change_mgmt_issues issues)"
+    log_debug "Change management assessment complete: $check_status ($change_mgmt_issues issues)"
 }
 
 # Assessment function for secure development lifecycle practices
 assess_secure_development_lifecycle() {
     local project_id="$1"
     
-    info_log "Assessing secure development lifecycle for project: $project_id"
+    log_debug "Assessing secure development lifecycle for project: $project_id"
     
     local check_status="PASS"
     local details=""
@@ -423,6 +447,8 @@ assess_secure_development_lifecycle() {
     if [[ -n "$secrets" ]]; then
         local secrets_count
         secrets_count=$(echo "$secrets" | wc -l)
+        secrets_count=$(echo "$secrets_count" | tr -d '\n\r' | grep -o '[0-9]*' | head -1)
+        [[ -z "$secrets_count" ]] && secrets_count=0
         details+="<p><strong>Secret Management:</strong></p>"
         details+="<p><span class='check-pass'>Secret Manager in use: $secrets_count secrets managed</span></p>"
     else
@@ -467,19 +493,20 @@ assess_secure_development_lifecycle() {
     details+="<li><strong>Dependency Management:</strong> Third-party component vulnerability scanning</li>"
     details+="<li><strong>Secret Management:</strong> No hardcoded credentials in code</li></ul>"
     
-    add_check_result "Secure Development Lifecycle" "$check_status" "$details"
+    add_check_result "$OUTPUT_FILE" "info" "Secure Development Lifecycle" "$details"
+    ((total_checks++))
     
-    debug_log "Secure development lifecycle assessment complete: $check_status ($security_gaps gaps)"
+    log_debug "Secure development lifecycle assessment complete: $check_status ($security_gaps gaps)"
 }
 
 # Main project assessment function
 assess_project() {
     local project_id="$1"
     
-    info_log "Assessing project: $project_id"
+    log_debug "Assessing project: $project_id"
     
     # Add project section to report
-    add_section "project_$project_id" "Project: $project_id"
+    add_section "$OUTPUT_FILE" "project_$project_id" "Project: $project_id" "Assessment results for project $project_id"
     
     # Perform all assessments for this project
     assess_secure_development "$project_id"
@@ -488,12 +515,52 @@ assess_project() {
     assess_change_management "$project_id"
     assess_secure_development_lifecycle "$project_id"
     
-    debug_log "Completed assessment for project: $project_id"
+    log_debug "Completed assessment for project: $project_id"
 }
 
 # Main execution function
 main() {
-    info_log "Starting PCI DSS Requirement 6 assessment"
+    # Setup environment and parse command line arguments
+    setup_environment "requirement6_assessment.log"
+    parse_common_arguments "$@"
+    case $? in
+        1) exit 1 ;;  # Error
+        2) exit 0 ;;  # Help displayed
+    esac
+    
+    # Validate GCP environment
+    validate_prerequisites || exit 1
+    
+    # Check permissions using the comprehensive permission check
+    if ! check_required_permissions "${REQ6_PERMISSIONS[@]}"; then
+        exit 1
+    fi
+    
+    # Setup assessment scope
+    setup_assessment_scope || exit 1
+    
+    # Configure HTML report
+    OUTPUT_FILE="${REPORT_DIR}/pci_req${REQUIREMENT_NUMBER}_report_$(date +%Y%m%d_%H%M%S).html"
+    initialize_report "$OUTPUT_FILE" "PCI DSS 4.0.1 - Requirement $REQUIREMENT_NUMBER Compliance Assessment Report" "${REQUIREMENT_NUMBER}"
+    
+    print_status "info" "============================================="
+    print_status "info" "  PCI DSS 4.0.1 - Requirement 6 (GCP)"
+    print_status "info" "============================================="
+    echo ""
+    
+    # Display scope information
+    print_status "info" "Assessment scope: ${ASSESSMENT_SCOPE:-project}"
+    if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
+        print_status "info" "Organization ID: ${ORG_ID}"
+    else
+        print_status "info" "Project ID: ${PROJECT_ID}"
+    fi
+    
+    echo ""
+    echo "Starting assessment at $(date)"
+    echo ""
+    
+    log_debug "Starting PCI DSS Requirement 6 assessment"
     
     # Initialize scope management and enumerate projects
     local projects
@@ -512,12 +579,23 @@ main() {
     # Add manual verification guidance section
     add_manual_verification_guidance
     
-    # Generate final report
-    local output_file="pci_requirement6_assessment_$(date +%Y%m%d_%H%M%S).html"
-    finalize_report "$output_file" "$REQUIREMENT_NUMBER"
+    # Add summary metrics before finalizing
+    add_summary_metrics "$OUTPUT_FILE" "$total_checks" "$passed_checks" "$failed_checks" "$warning_checks"
     
-    print_status "PASS" "Assessment complete! Report saved to: $output_file"
+    # Generate final report
+    finalize_report "$OUTPUT_FILE" "$REQUIREMENT_NUMBER"
+    
+    echo ""
+    print_status "PASS" "======================= ASSESSMENT SUMMARY ======================="
+    echo "Total checks performed: $total_checks"
+    echo "Passed checks: $passed_checks"
+    echo "Failed checks: $failed_checks"
+    echo "Warning checks: $warning_checks"
+    print_status "PASS" "=================================================================="
+    echo ""
+    print_status "INFO" "Report has been generated: $OUTPUT_FILE"
     print_status "INFO" "Projects assessed: $project_count"
+    print_status "PASS" "=================================================================="
     
     return 0
 }
@@ -545,8 +623,8 @@ add_manual_verification_guidance() {
 <li>Implement IAM policies for role separation</li>
 </ul>"
     
-    add_section "manual_verification" "Manual Verification Required"
-    add_check_result "Manual Verification Required" "warning" "$manual_guidance"
+    add_section "$OUTPUT_FILE" "manual_verification" "Manual Verification Required" "Manual verification requirements for PCI DSS compliance"
+    add_check_result "$OUTPUT_FILE" "info" "Manual Verification Required" "$manual_guidance"
 }
 
 # Execute main function if script is run directly

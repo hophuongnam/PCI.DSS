@@ -15,43 +15,52 @@ source "$LIB_DIR/gcp_html_report.sh" || exit 1
 # Script-specific variables
 REQUIREMENT_NUMBER="8"
 
-# Register required permissions for Requirement 8
-register_required_permissions "$REQUIREMENT_NUMBER" \
-    "iam.serviceAccounts.list" \
-    "resourcemanager.projects.getIamPolicy" \
-    "iam.roles.list" \
-    "admin.directory.users.readonly" \
-    "admin.directory.groups.readonly" \
-    "logging.logEntries.list" \
-    "monitoring.alertPolicies.list" \
-    "cloudasset.assets.searchAllResources" || {
-    echo "Error: Failed to register required permissions for Requirement $REQUIREMENT_NUMBER"
-    exit 1
+# Counters for checks  
+total_checks=0
+passed_checks=0
+warning_checks=0
+failed_checks=0
+
+# Define required permissions for Requirement 8
+declare -a REQ8_PERMISSIONS=(
+    "iam.serviceAccounts.list"
+    "resourcemanager.projects.getIamPolicy"
+    "iam.roles.list"
+    "admin.directory.users.readonly"
+    "admin.directory.groups.readonly"
+    "logging.logEntries.list"
+    "monitoring.alertPolicies.list"
+    "cloudasset.assets.searchAllResources"
+    "resourcemanager.projects.get"
+    "resourcemanager.organizations.get"
+    "iam.serviceAccounts.getIamPolicy"
+    "compute.instances.osLogin"
+)
+
+# Function to show help
+show_help() {
+    echo "GCP PCI DSS Requirement 8 Assessment Script (Framework Version)"
+    echo "=============================================================="
+    echo ""
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  -s, --scope SCOPE          Assessment scope: 'project' or 'organization' (default: project)"
+    echo "  -p, --project PROJECT_ID   Specific project to assess (overrides current gcloud config)"
+    echo "  -o, --org ORG_ID          Specific organization ID to assess (required for organization scope)"
+    echo "  -f, --format FORMAT       Output format: 'html' or 'text' (default: html)"
+    echo "  -v, --verbose             Enable verbose output"
+    echo "  -h, --help                Show this help message"
+    echo ""
+    echo "Examples:"
+    echo "  $0                                    # Assess current project"
+    echo "  $0 --scope project --project my-proj # Assess specific project" 
+    echo "  $0 --scope organization --org 123456 # Assess entire organization"
+    echo ""
+    echo "Note: Organization scope requires appropriate permissions across all projects in the organization."
 }
 
-# Setup environment and parse command line arguments
-setup_environment "requirement8_assessment.log"
-parse_common_arguments "$@"
-
-# Validate GCP environment
-validate_prerequisites || exit 1
-
-# Check permissions
-if ! check_all_permissions; then
-    prompt_continue_limited || exit 1
-fi
-
-# Setup assessment scope
-setup_assessment_scope "$SCOPE" "$PROJECT_ID" "$ORG_ID"
-
-# Configure HTML report
-OUTPUT_FILE="${REPORT_DIR}/pci_req${REQUIREMENT_NUMBER}_report_$(date +%Y%m%d_%H%M%S).html"
-initialize_report "$OUTPUT_FILE" "PCI DSS Requirement $REQUIREMENT_NUMBER Assessment" "$REQUIREMENT_NUMBER"
-
-# Add assessment introduction
-add_section "$OUTPUT_FILE" "authentication_governance" "Authentication and Identity Management Assessment" "Assessment of user identification and authentication access controls"
-
-log_debug "Starting PCI DSS Requirement 8 assessment"
+# Note: Initialization moved to main function to follow modern framework pattern
 
 # Core Assessment Functions
 
@@ -63,10 +72,12 @@ assess_authentication_governance() {
     # 8.1.1 - Security policies and operational procedures documentation
     add_check_result "$OUTPUT_FILE" "info" "8.1.1 - Security policies documentation" \
         "Verify documented security policies for Requirement 8 are maintained, up to date, in use, and known to affected parties"
+    ((total_checks++))
     
     # 8.1.2 - Roles and responsibilities documentation
     add_check_result "$OUTPUT_FILE" "info" "8.1.2 - Roles and responsibilities" \
         "Verify roles and responsibilities for Requirement 8 activities are documented, assigned, and understood"
+    ((total_checks++))
     
     # Check for automated policy enforcement via Organization Policy
     local policy_violations
@@ -78,10 +89,13 @@ assess_authentication_governance() {
     if [[ -n "$policy_violations" ]]; then
         add_check_result "$OUTPUT_FILE" "pass" "8.1 - Organization policy enforcement" \
             "Organization policies detected for authentication governance: $policy_violations"
+        ((passed_checks++))
     else
         add_check_result "$OUTPUT_FILE" "warning" "8.1 - Organization policy enforcement" \
             "No organization policies detected for authentication governance. Consider implementing constraints for service account management."
+        ((warning_checks++))
     fi
+    ((total_checks++))
 }
 
 # 8.2 - User identification and account lifecycle management
@@ -298,31 +312,79 @@ assess_project() {
     log_debug "Completed Requirement 8 assessment for project: $project_id"
 }
 
-# Execute assessment based on scope
-if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
-    # Organization-wide assessment
-    log_debug "Starting organization-wide assessment for org: $ORG_ID"
+# Main execution function
+main() {
+    # Setup environment and parse command line arguments
+    setup_environment "requirement8_assessment.log"
+    parse_common_arguments "$@"
+    case $? in
+        1) exit 1 ;;  # Error
+        2) exit 0 ;;  # Help displayed
+    esac
     
-    # Get all projects in organization
-    projects=$(get_projects_in_scope)
+    # Validate GCP environment
+    validate_prerequisites || exit 1
     
-    if [[ -z "$projects" ]]; then
-        error_exit "No projects found in organization $ORG_ID"
+    # Check permissions using the comprehensive permission check
+    if ! check_required_permissions "${REQ8_PERMISSIONS[@]}"; then
+        exit 1
     fi
     
-    while read -r project_id; do
-        [[ -z "$project_id" ]] && continue
-        assess_project "$project_id"
-    done <<< "$projects"
+    # Setup assessment scope
+    setup_assessment_scope || exit 1
     
-else
-    # Single project assessment
-    log_debug "Starting single project assessment for: $PROJECT_ID"
-    assess_project "$PROJECT_ID"
-fi
-
-# Add manual verification requirements
-manual_requirements="
+    # Configure HTML report
+    OUTPUT_FILE="${REPORT_DIR}/pci_req${REQUIREMENT_NUMBER}_report_$(date +%Y%m%d_%H%M%S).html"
+    initialize_report "$OUTPUT_FILE" "PCI DSS 4.0.1 - Requirement $REQUIREMENT_NUMBER Compliance Assessment Report" "${REQUIREMENT_NUMBER}"
+    
+    print_status "info" "============================================="
+    print_status "info" "  PCI DSS 4.0.1 - Requirement 8 (GCP)"
+    print_status "info" "============================================="
+    echo ""
+    
+    # Display scope information
+    print_status "info" "Assessment scope: ${ASSESSMENT_SCOPE:-project}"
+    if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
+        print_status "info" "Organization ID: ${ORG_ID}"
+    else
+        print_status "info" "Project ID: ${PROJECT_ID}"
+    fi
+    
+    echo ""
+    echo "Starting assessment at $(date)"
+    echo ""
+    
+    # Add assessment introduction
+    add_section "$OUTPUT_FILE" "authentication_governance" "Authentication and Identity Management Assessment" "Assessment of user identification and authentication access controls"
+    
+    log_debug "Starting PCI DSS Requirement 8 assessment"
+    
+    # Execute assessment based on scope
+    if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
+        # Organization-wide assessment
+        log_debug "Starting organization-wide assessment for org: $ORG_ID"
+        
+        # Get all projects in organization
+        projects=$(get_projects_in_scope)
+        
+        if [[ -z "$projects" ]]; then
+            print_status "ERROR" "No projects found in organization $ORG_ID"
+            exit 1
+        fi
+        
+        while read -r project_id; do
+            [[ -z "$project_id" ]] && continue
+            assess_project "$project_id"
+        done <<< "$projects"
+        
+    else
+        # Single project assessment
+        log_debug "Starting single project assessment for: $PROJECT_ID"
+        assess_project "$PROJECT_ID"
+    fi
+    
+    # Add manual verification requirements
+    manual_requirements="
 <h3>Manual Verification Requirements</h3>
 <p>The following items require manual verification for complete PCI DSS Requirement 8 compliance:</p>
 <ul>
@@ -343,10 +405,30 @@ manual_requirements="
     <li>Configure Identity-Aware Proxy for application-level authentication</li>
 </ul>
 "
+    
+    add_section "$OUTPUT_FILE" "manual_verification" "Manual Verification Requirements" "$manual_requirements"
+    
+    # Add summary metrics before finalizing
+    add_summary_metrics "$OUTPUT_FILE" "$total_checks" "$passed_checks" "$failed_checks" "$warning_checks"
+    
+    # Finalize the report
+    finalize_report "$OUTPUT_FILE" "$REQUIREMENT_NUMBER"
+    
+    echo ""
+    print_status "PASS" "======================= ASSESSMENT SUMMARY ======================="
+    echo "Total checks performed: $total_checks"
+    echo "Passed checks: $passed_checks"
+    echo "Failed checks: $failed_checks"
+    echo "Warning checks: $warning_checks"
+    print_status "PASS" "=================================================================="
+    echo ""
+    print_status "INFO" "Report has been generated: $OUTPUT_FILE"
+    print_status "PASS" "=================================================================="
+    
+    log_debug "PCI DSS Requirement 8 assessment completed"
+    
+    return 0
+}
 
-add_section "$OUTPUT_FILE" "manual_verification" "Manual Verification Requirements" "$manual_requirements"
-
-# Finalize the report
-finalize_report "$OUTPUT_FILE"
-
-log_debug "PCI DSS Requirement 8 assessment completed"
+# Execute main function
+main "$@"
