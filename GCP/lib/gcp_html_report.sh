@@ -13,6 +13,24 @@
 # Library Dependencies and Initialization
 # =============================================================================
 
+# Global variable to track temp files for cleanup
+declare -a HTML_TEMP_FILES
+
+# Cleanup function for temporary files
+cleanup_html_temp_files() {
+    local temp_file
+    for temp_file in "${HTML_TEMP_FILES[@]}"; do
+        if [[ -f "$temp_file" ]]; then
+            rm -f "$temp_file" 2>/dev/null || true
+            log_debug "Cleaned up temporary file: $temp_file"
+        fi
+    done
+    HTML_TEMP_FILES=()
+}
+
+# Set up cleanup trap
+trap cleanup_html_temp_files EXIT
+
 # Ensure this script is sourced, not executed
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     echo "Error: This script should be sourced, not executed directly" >&2
@@ -247,8 +265,8 @@ initialize_report() {
             display: none;
             background-color: #ffffff;
         }
-        .active + .section-content {
-            display: block;
+        .section-header.active + .section-content {
+            display: block !important;
         }
         .check-item {
             border-left: 4px solid #ddd;
@@ -441,6 +459,8 @@ add_section() {
     else
         # Create marker file for first section
         echo "1" > "${output_file}.section_count"
+        # Register for cleanup
+        HTML_TEMP_FILES+=("${output_file}.section_count")
     fi
     
     section_html+="        <div class=\"section\" id=\"section-$section_id\">
@@ -699,11 +719,11 @@ finalize_report() {
                 
                 if (isActive) {
                     header.classList.remove('active');
-                    content.style.display = 'none';
+                    content.style.removeProperty('display');
                     header.setAttribute('aria-expanded', 'false');
                 } else {
                     header.classList.add('active');
-                    content.style.display = 'block';
+                    content.style.removeProperty('display');
                     header.setAttribute('aria-expanded', 'true');
                 }
             }
@@ -719,7 +739,7 @@ finalize_report() {
                     const content = section.querySelector('.section-content');
                     if (header && content && !header.classList.contains('active')) {
                         header.classList.add('active');
-                        content.style.display = 'block';
+                        content.style.removeProperty('display');
                         header.setAttribute('aria-expanded', 'true');
                     }
                 }
@@ -749,7 +769,16 @@ finalize_report() {
         log_debug "Report closed with interactive JavaScript"
         
         # Clean up temporary marker file
-        [[ -f "${output_file}.section_count" ]] && rm -f "${output_file}.section_count"
+        if [[ -f "${output_file}.section_count" ]]; then
+            rm -f "${output_file}.section_count"
+            # Remove from tracking array
+            local temp_file="${output_file}.section_count"
+            local new_array=()
+            for file in "${HTML_TEMP_FILES[@]}"; do
+                [[ "$file" != "$temp_file" ]] && new_array+=("$file")
+            done
+            HTML_TEMP_FILES=("${new_array[@]}")
+        fi
         
         return 0
     else
@@ -877,3 +906,10 @@ add_manual_check() {
     print_status "PASS" "Manual check added: $title"
     return 0
 }
+
+# Export all functions for use by scripts
+export -f initialize_report add_section add_check_result finalize_report close_section add_manual_check html_append validate_html_params gather_gcp_metadata cleanup_html_temp_files
+
+# Set library loaded flag
+export GCP_HTML_REPORT_LOADED="true"
+print_status "PASS" "GCP HTML Report Library v1.0 loaded successfully"

@@ -16,56 +16,6 @@ source "$LIB_DIR/gcp_html_report.sh" || exit 1
 # Script-specific variables
 REQUIREMENT_NUMBER="11"
 
-# Initialize environment
-setup_environment || exit 1
-
-# Parse command line arguments using shared function
-parse_common_arguments "$@"
-case $? in
-    1) exit 1 ;;  # Error
-    2) exit 0 ;;  # Help displayed
-esac
-
-# Setup report configuration using shared library
-load_requirement_config "${REQUIREMENT_NUMBER}"
-
-# Validate scope and setup project context using shared library
-setup_assessment_scope || exit 1
-
-# Check permissions using shared library
-check_required_permissions "compute.instances.list" "security.assessments.list" || exit 1
-
-# Initialize HTML report using shared library
-# Set output file path
-OUTPUT_FILE="${REPORT_DIR}/pci_req${REQUIREMENT_NUMBER}_report_$(date +%Y%m%d_%H%M%S).html"
-
-# Initialize HTML report using shared library
-initialize_report "$OUTPUT_FILE" "PCI DSS 4.0.1 - Requirement $REQUIREMENT_NUMBER Compliance Assessment Report" "${REQUIREMENT_NUMBER}"
-
-print_status "info" "============================================="
-print_status "info" "  PCI DSS 4.0.1 - Requirement 11 (GCP)"
-print_status "info" "============================================="
-echo ""
-
-# Display scope information using shared library
-# Display scope information using shared library - now handled in print_status calls
-print_status "info" "Assessment scope: ${ASSESSMENT_SCOPE:-project}"
-if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
-    print_status "info" "Organization ID: ${ORG_ID}"
-else
-    print_status "info" "Project ID: ${PROJECT_ID}"
-fi
-
-echo ""
-echo "Starting assessment at $(date)"
-echo ""
-
-# Reset counters for actual compliance checks
-total_checks=0
-passed_checks=0
-warning_checks=0
-failed_checks=0
-
 
 # Function to show help
 show_help() {
@@ -90,50 +40,27 @@ show_help() {
     echo "Note: Organization scope requires appropriate permissions across all projects in the organization."
 }
 
-# Register required permissions for Requirement 11
-register_required_permissions "$REQUIREMENT_NUMBER" \
-    "compute.instances.list" \
-    "compute.firewalls.list" \
-    "compute.networks.list" \
-    "compute.subnetworks.list" \
-    "compute.zones.list" \
-    "cloudasset.assets.searchAllResources" \
-    "securitycenter.findings.list" \
-    "securitycenter.sources.list" \
-    "container.clusters.list" \
-    "container.nodes.list" \
-    "logging.logEntries.list" \
-    "monitoring.alertPolicies.list" \
-    "resourcemanager.projects.get" \
-    "resourcemanager.organizations.get" \
-    "iam.serviceAccounts.list" \
-    "storage.buckets.list" \
-    "pubsub.topics.list" \
+# Define required permissions for Requirement 11
+declare -a REQ11_PERMISSIONS=(
+    "compute.instances.list"
+    "compute.firewalls.list"
+    "compute.networks.list"
+    "compute.subnetworks.list"
+    "compute.zones.list"
+    "cloudasset.assets.searchAllResources"
+    "securitycenter.findings.list"
+    "securitycenter.sources.list"
+    "container.clusters.list"
+    "container.nodes.list"
+    "logging.logEntries.list"
+    "monitoring.alertPolicies.list"
+    "resourcemanager.projects.get"
+    "resourcemanager.organizations.get"
+    "iam.serviceAccounts.list"
+    "storage.buckets.list"
+    "pubsub.topics.list"
     "dns.managedZones.list"
-
-# Setup environment and parse command line arguments
-setup_environment "requirement11_assessment.log"
-parse_common_arguments "$@"
-
-# Validate GCP environment
-validate_prerequisites || exit 1
-
-# Check permissions
-if ! check_all_permissions; then
-    prompt_continue_limited || exit 1
-fi
-
-# Setup assessment scope
-setup_assessment_scope "$SCOPE" "$PROJECT_ID" "$ORG_ID"
-
-# Configure HTML report
-OUTPUT_FILE="${REPORT_DIR}/pci_req${REQUIREMENT_NUMBER}_report_$(date +%Y%m%d_%H%M%S).html"
-initialize_report "$OUTPUT_FILE" "PCI DSS Requirement $REQUIREMENT_NUMBER Assessment" "$REQUIREMENT_NUMBER"
-
-# Add assessment introduction
-add_section "$OUTPUT_FILE" "security_testing" "Security Testing Assessment" "Assessment of security testing and monitoring controls"
-
-log_debug "Starting PCI DSS Requirement 11 assessment"
+)
 
 # Core Assessment Functions
 
@@ -718,7 +645,7 @@ add_manual_verification_guidance() {
 assess_project() {
     local project_id="$1"
     
-    info_log "Assessing project: $project_id"
+    log_debug "Assessing project: $project_id"
     
     # Add project section to report
     add_section "$OUTPUT_FILE" "project_$project_id" "Project: $project_id" "Assessment results for project $project_id"
@@ -737,7 +664,50 @@ assess_project() {
 
 # Main execution
 main() {
-    info_log "Starting PCI DSS Requirement 11 assessment"
+    # Setup environment and parse command line arguments
+    setup_environment "requirement11_assessment.log"
+    parse_common_arguments "$@"
+    case $? in
+        1) exit 1 ;;  # Error
+        2) exit 0 ;;  # Help displayed
+    esac
+    
+    # Validate GCP environment
+    validate_prerequisites || exit 1
+    
+    # Check permissions using the comprehensive permission check
+    if ! check_required_permissions "${REQ11_PERMISSIONS[@]}"; then
+        exit 1
+    fi
+    
+    # Setup assessment scope
+    setup_assessment_scope || exit 1
+    
+    # Configure HTML report
+    OUTPUT_FILE="${REPORT_DIR}/pci_req${REQUIREMENT_NUMBER}_report_$(date +%Y%m%d_%H%M%S).html"
+    initialize_report "$OUTPUT_FILE" "PCI DSS 4.0.1 - Requirement $REQUIREMENT_NUMBER Compliance Assessment Report" "${REQUIREMENT_NUMBER}"
+    
+    # Add assessment introduction
+    add_section "$OUTPUT_FILE" "security_testing" "Security Testing Assessment" "Assessment of security testing and monitoring controls"
+    
+    print_status "info" "============================================="
+    print_status "info" "  PCI DSS 4.0.1 - Requirement 11 (GCP)"
+    print_status "info" "============================================="
+    echo ""
+    
+    # Display scope information
+    print_status "info" "Assessment scope: ${ASSESSMENT_SCOPE:-project}"
+    if [[ "$ASSESSMENT_SCOPE" == "organization" ]]; then
+        print_status "info" "Organization ID: ${ORG_ID}"
+    else
+        print_status "info" "Project ID: ${PROJECT_ID}"
+    fi
+    
+    echo ""
+    echo "Starting assessment at $(date)"
+    echo ""
+    
+    log_debug "Starting PCI DSS Requirement 11 assessment"
     
     # Initialize scope management and enumerate projects
     local projects
@@ -757,11 +727,10 @@ main() {
     add_manual_verification_guidance
     
     # Generate final report
-    local output_file="pci_requirement11_assessment_$(date +%Y%m%d_%H%M%S).html"
-    finalize_report "$output_file" "$REQUIREMENT_NUMBER"
+    finalize_report "$OUTPUT_FILE" "$REQUIREMENT_NUMBER"
     
-    success_log "Assessment complete! Report saved to: $output_file"
-    success_log "Projects assessed: $project_count"
+    print_status "PASS" "Assessment complete! Report saved to: $OUTPUT_FILE"
+    print_status "INFO" "Projects assessed: $project_count"
     
     return 0
 }

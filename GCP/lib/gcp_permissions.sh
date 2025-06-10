@@ -485,16 +485,24 @@ check_required_permissions() {
     
     echo ""
     
-    # Then check specific permissions if provided
-    if [[ ${#requirement_permissions[@]} -gt 0 ]]; then
-        print_status "INFO" "Step 2: Checking requirement-specific permissions..."
+    # If functional testing passed (roles_ok=true), we have sufficient permissions
+    # Only do detailed permission testing if functional testing failed
+    local detailed_permissions_ok=true
+    local coverage=100
+    
+    if [[ "$roles_ok" == "false" && ${#requirement_permissions[@]} -gt 0 ]]; then
+        print_status "INFO" "Step 2: Functional testing failed - checking requirement-specific permissions..."
         REQUIRED_PERMISSIONS=("${requirement_permissions[@]}")
         if ! check_all_permissions; then
-            local coverage=$(get_permission_coverage)
+            detailed_permissions_ok=false
+            coverage=$(get_permission_coverage)
             if [[ $coverage -lt 80 ]]; then
                 print_status "WARN" "Low permission coverage for requirement-specific checks"
             fi
         fi
+    elif [[ "$roles_ok" == "true" ]]; then
+        print_status "INFO" "Step 2: Functional testing passed - skipping detailed permission check"
+        print_status "PASS" "Functional validation confirms sufficient permissions for assessment"
     else
         print_status "INFO" "Step 2: No requirement-specific permissions to check"
     fi
@@ -504,17 +512,17 @@ check_required_permissions() {
     
     # Determine overall status
     if [[ "$roles_ok" == "true" ]]; then
-        print_status "PASS" "✓ Standard GCP roles: All required roles available"
+        print_status "PASS" "✓ Standard GCP roles: Functional testing passed (sufficient permissions)"
+        print_status "PASS" "✓ Overall permission status: Assessment can proceed with full functionality"
     else
-        print_status "FAIL" "✗ Standard GCP roles: Missing required roles"
-    fi
-    
-    if [[ ${#requirement_permissions[@]} -gt 0 ]]; then
-        local coverage=$(get_permission_coverage)
-        if [[ $coverage -eq 100 ]]; then
-            print_status "PASS" "✓ Requirement permissions: All permissions available"
-        else
-            print_status "WARN" "⚠ Requirement permissions: ${coverage}% coverage"
+        print_status "FAIL" "✗ Standard GCP roles: Functional testing failed"
+        
+        if [[ ${#requirement_permissions[@]} -gt 0 ]]; then
+            if [[ $coverage -eq 100 ]]; then
+                print_status "PASS" "✓ Requirement permissions: All permissions available via detailed check"
+            else
+                print_status "WARN" "⚠ Requirement permissions: ${coverage}% coverage via detailed check"
+            fi
         fi
     fi
     
@@ -522,21 +530,13 @@ check_required_permissions() {
     
     # Overall decision
     if [[ "$roles_ok" == "true" ]]; then
-        if [[ ${#requirement_permissions[@]} -eq 0 ]] || [[ $(get_permission_coverage) -ge 80 ]]; then
-            print_status "PASS" "Permission validation successful - proceeding with assessment"
-            return 0
-        else
-            print_status "WARN" "Some requirement-specific permissions missing"
-            if prompt_continue_limited; then
-                return 0
-            else
-                return 1
-            fi
-        fi
+        print_status "PASS" "Permission validation successful - proceeding with assessment"
+        return 0
+    elif [[ "$detailed_permissions_ok" == "true" || $coverage -ge 80 ]]; then
+        print_status "PASS" "Sufficient permissions available via detailed check - proceeding with assessment"
+        return 0
     else
-        print_status "FAIL" "Critical standard roles missing - assessment quality will be significantly impacted"
-        echo ""
-        print_status "INFO" "Recommendation: Assign the missing standard roles before proceeding"
+        print_status "WARN" "Limited permissions detected"
         if prompt_continue_limited; then
             return 0
         else
