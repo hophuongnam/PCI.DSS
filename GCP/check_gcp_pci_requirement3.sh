@@ -19,13 +19,48 @@ source "$LIB_DIR/gcp_html_report.sh" || exit 1
 readonly REQUIREMENT_NUMBER="3"
 readonly REQUIREMENT_TITLE="Protect Stored Account Data"
 
-# Register required permissions for Requirement 3
-register_required_permissions "$REQUIREMENT_NUMBER" \
-    "storage.buckets.list" \
-    "storage.buckets.getIamPolicy" \
-    "cloudsql.instances.list" \
-    "cloudkms.cryptoKeys.list" \
+# Counters for checks  
+total_checks=0
+passed_checks=0
+warning_checks=0
+failed_checks=0
+
+# Define required permissions for Requirement 3
+declare -a REQ3_PERMISSIONS=(
+    "storage.buckets.list"
+    "storage.buckets.getIamPolicy"
+    "cloudsql.instances.list"
+    "cloudkms.cryptoKeys.list"
     "compute.disks.list"
+    "cloudkms.keyRings.list"
+    "compute.instances.list"
+    "storage.objects.list"
+    "resourcemanager.projects.get"
+    "resourcemanager.organizations.get"
+)
+
+# Function to show help
+show_help() {
+    echo "GCP PCI DSS Requirement 3 Assessment Script (Framework Version)"
+    echo "=============================================================="
+    echo ""
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  -s, --scope SCOPE          Assessment scope: 'project' or 'organization' (default: project)"
+    echo "  -p, --project PROJECT_ID   Specific project to assess (overrides current gcloud config)"
+    echo "  -o, --org ORG_ID          Specific organization ID to assess (required for organization scope)"
+    echo "  -f, --format FORMAT       Output format: 'html' or 'text' (default: html)"
+    echo "  -v, --verbose             Enable verbose output"
+    echo "  -h, --help                Show this help message"
+    echo ""
+    echo "Examples:"
+    echo "  $0                                    # Assess current project"
+    echo "  $0 --scope project --project my-proj # Assess specific project" 
+    echo "  $0 --scope organization --org 123456 # Assess entire organization"
+    echo ""
+    echo "Note: Organization scope requires appropriate permissions across all projects in the organization."
+}
 
 # =============================================================================
 # Assessment Functions
@@ -44,6 +79,8 @@ assess_storage_encryption() {
         if ! buckets=$(gcloud storage buckets list --project="$project" --format="value(name)" 2>/dev/null); then
             print_status "WARN" "Failed to list storage buckets in project $project"
             add_check_result "$OUTPUT_FILE" "warning" "Project $project" "Unable to access storage buckets"
+            ((warning_checks++))
+            ((total_checks++))
             continue
         fi
         
@@ -56,13 +93,19 @@ assess_storage_encryption() {
             if ! encryption_status=$(gcloud storage buckets describe "gs://$bucket" --format="value(encryption.defaultKmsKeyName)" 2>/dev/null); then
                 print_status "WARN" "Failed to describe bucket $bucket"
                 add_check_result "$OUTPUT_FILE" "warning" "Bucket $bucket" "Unable to verify encryption status"
+                ((warning_checks++))
+                ((total_checks++))
                 continue
             fi
             
             if [[ -n "$encryption_status" ]]; then
                 add_check_result "$OUTPUT_FILE" "pass" "Bucket $bucket" "CMEK encryption enabled"
+                ((passed_checks++))
+                ((total_checks++))
             else
                 add_check_result "$OUTPUT_FILE" "fail" "Bucket $bucket" "Default encryption only - consider CMEK" "Consider implementing Customer-Managed Encryption Keys (CMEK) for enhanced security"
+                ((failed_checks++))
+                ((total_checks++))
             fi
         done <<< "$buckets"
         
@@ -85,6 +128,8 @@ assess_database_encryption() {
         if ! instances=$(gcloud sql instances list --project="$project" --format="value(name)" 2>/dev/null); then
             print_status "WARN" "Failed to list SQL instances in project $project"
             add_check_result "$OUTPUT_FILE" "warning" "Project $project" "Unable to access SQL instances"
+            ((warning_checks++))
+            ((total_checks++))
             continue
         fi
         
@@ -97,13 +142,19 @@ assess_database_encryption() {
             if ! encryption=$(gcloud sql instances describe "$instance" --project="$project" --format="value(diskEncryptionConfiguration.kmsKeyName)" 2>/dev/null); then
                 print_status "WARN" "Failed to describe SQL instance $instance"
                 add_check_result "$OUTPUT_FILE" "warning" "SQL Instance $instance" "Unable to verify encryption status"
+                ((warning_checks++))
+                ((total_checks++))
                 continue
             fi
             
             if [[ -n "$encryption" ]]; then
                 add_check_result "$OUTPUT_FILE" "pass" "SQL Instance $instance" "CMEK encryption configured"
+                ((passed_checks++))
+                ((total_checks++))
             else
                 add_check_result "$OUTPUT_FILE" "warning" "SQL Instance $instance" "Using default encryption" "Consider implementing Customer-Managed Encryption Keys (CMEK) for enhanced security"
+                ((warning_checks++))
+                ((total_checks++))
             fi
         done <<< "$instances"
         
@@ -126,6 +177,8 @@ assess_key_management() {
         if ! keyrings=$(gcloud kms keyrings list --location=global --project="$project" --format="value(name)" 2>/dev/null); then
             print_status "WARN" "Failed to list KMS keyrings in project $project"
             add_check_result "$OUTPUT_FILE" "warning" "Project $project" "Unable to access KMS keyrings"
+            ((warning_checks++))
+            ((total_checks++))
             continue
         fi
         
@@ -137,8 +190,11 @@ assess_key_management() {
         
         if [[ $keyring_count -gt 0 ]]; then
             add_check_result "$OUTPUT_FILE" "pass" "Key Management" "Found $keyring_count KMS keyrings in project $project"
+            ((passed_checks++))
+            ((total_checks++))
         else
             add_check_result "$OUTPUT_FILE" "info" "Key Management" "No KMS keyrings found in project $project"
+            ((total_checks++))
         fi
         
         print_status "INFO" "Processed $keyring_count KMS keyrings in project $project"
@@ -182,8 +238,7 @@ main() {
     fi
     
     # Check permissions using framework
-    if ! check_required_permissions; then
-        print_status "FAIL" "Required permissions check failed"
+    if ! check_required_permissions "${REQ3_PERMISSIONS[@]}"; then
         exit 1
     fi
     
@@ -222,14 +277,25 @@ main() {
         print_status "WARN" "Key management assessment encountered issues"
     fi
     
+    # Add summary metrics before finalizing
+    add_summary_metrics "$OUTPUT_FILE" "$total_checks" "$passed_checks" "$failed_checks" "$warning_checks"
+    
     # Finalize report using framework
     if ! finalize_report "$OUTPUT_FILE" "$REQUIREMENT_NUMBER"; then
         print_status "FAIL" "Failed to finalize HTML report"
         exit 1
     fi
     
-    print_status "PASS" "Assessment completed successfully!"
-    print_status "INFO" "Report generated: ${OUTPUT_FILE:-report.html}"
+    echo ""
+    print_status "PASS" "======================= ASSESSMENT SUMMARY ======================="
+    echo "Total checks performed: $total_checks"
+    echo "Passed checks: $passed_checks"
+    echo "Failed checks: $failed_checks"
+    echo "Warning checks: $warning_checks"
+    print_status "PASS" "=================================================================="
+    echo ""
+    print_status "INFO" "Report has been generated: $OUTPUT_FILE"
+    print_status "PASS" "=================================================================="
 }
 
 # Execute main function
