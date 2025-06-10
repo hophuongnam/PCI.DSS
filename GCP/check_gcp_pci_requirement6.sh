@@ -250,23 +250,69 @@ assess_web_protection() {
     
     details+="<h4>Web Application Protection Assessment</h4>"
     
-    # Check Cloud Armor security policies
+    # Check Cloud Armor security policies with detailed rule analysis
     local armor_policies
     armor_policies=$(gcloud compute security-policies list $gcloud_cmd_prefix --format="value(name,description)" 2>/dev/null)
     
     if [[ -z "$armor_policies" ]]; then
-        details+="<p><span class='check-warning'>No Cloud Armor security policies found</span></p>"
-        details+="<p>Web applications should be protected by Web Application Firewall (WAF)</p>"
-        check_status="WARNING"
+        details+="<p><span class='check-fail'>No Cloud Armor security policies found</span></p>"
+        details+="<p>Web applications must be protected by Web Application Firewall (WAF) for PCI DSS compliance</p>"
+        check_status="FAIL"
     else
-        details+="<p><strong>Cloud Armor Policies:</strong></p><ul>"
+        details+="<p><strong>Cloud Armor Security Policies Analysis:</strong></p>"
+        local policy_count=0
+        local effective_policies=0
+        
         while IFS=$'\t' read -r policy_name description; do
             [[ -z "$policy_name" ]] && continue
-            details+="<li><span class='check-pass'>Policy: $policy_name</span>"
-            [[ -n "$description" ]] && details+=" - $description"
-            details+="</li>"
+            ((policy_count++))
+            
+            # Get detailed policy rules
+            local policy_rules
+            policy_rules=$(gcloud compute security-policies describe "$policy_name" $gcloud_cmd_prefix --format="json" 2>/dev/null)
+            
+            if [[ -n "$policy_rules" ]]; then
+                local rule_count
+                rule_count=$(echo "$policy_rules" | jq -r '.rules | length' 2>/dev/null || echo "0")
+                
+                local owasp_rules
+                owasp_rules=$(echo "$policy_rules" | jq -r '.rules[] | select(.preconfiguredWafConfig != null) | .preconfiguredWafConfig.exclusions[]?.targetRuleSet' 2>/dev/null | grep -c "owasp" || echo "0")
+                
+                local rate_limit_rules
+                rate_limit_rules=$(echo "$policy_rules" | jq -r '.rules[] | select(.rateLimitOptions != null)' 2>/dev/null | wc -l || echo "0")
+                
+                details+="<ul><li><strong>Policy: $policy_name</strong>"
+                [[ -n "$description" ]] && details+=" - $description"
+                details+="<ul>"
+                details+="<li>Total Rules: $rule_count</li>"
+                
+                if [[ "$owasp_rules" -gt 0 ]]; then
+                    details+="<li><span class='check-pass'>OWASP Protection: $owasp_rules rules configured</span></li>"
+                    ((effective_policies++))
+                else
+                    details+="<li><span class='check-warning'>No OWASP protection rules found</span></li>"
+                fi
+                
+                if [[ "$rate_limit_rules" -gt 0 ]]; then
+                    details+="<li><span class='check-pass'>Rate Limiting: $rate_limit_rules rules configured</span></li>"
+                else
+                    details+="<li><span class='check-warning'>No rate limiting rules configured</span></li>"
+                fi
+                
+                details+="</ul></li></ul>"
+            else
+                details+="<ul><li><span class='check-warning'>Policy: $policy_name - Unable to analyze rules</span></li></ul>"
+            fi
         done <<< "$armor_policies"
-        details+="</ul>"
+        
+        # Overall assessment
+        if [[ "$effective_policies" -eq 0 ]]; then
+            details+="<p><span class='check-warning'>Cloud Armor policies exist but lack comprehensive WAF protection</span></p>"
+            check_status="WARNING"
+        elif [[ "$effective_policies" -lt "$policy_count" ]]; then
+            details+="<p><span class='check-warning'>Some Cloud Armor policies need enhanced WAF configuration</span></p>"
+            [[ "$check_status" == "PASS" ]] && check_status="WARNING"
+        fi
     fi
     
     # Check backend services for security policy attachment

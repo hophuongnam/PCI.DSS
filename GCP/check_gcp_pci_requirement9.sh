@@ -70,12 +70,12 @@ assess_physical_access_processes() {
     log_debug "Assessing physical access processes for project: $project_id"
     
     # 9.1.1 - Security policies and operational procedures documentation
-    add_check_result $OUTPUT_FILE "info" "9.1.1 - Security policies documentation" \
+    add_check_result "$OUTPUT_FILE" "info" "9.1.1 - Security policies documentation" \
         "Verify documented security policies for Requirement 9 are maintained, up to date, in use, and known to affected parties"
     ((total_checks++))
     
     # 9.1.2 - Roles and responsibilities documentation
-    add_check_result $OUTPUT_FILE "info" "9.1.2 - Roles and responsibilities" \
+    add_check_result "$OUTPUT_FILE" "info" "9.1.2 - Roles and responsibilities" \
         "Verify roles and responsibilities for Requirement 9 activities are documented, assigned, and understood"
     ((total_checks++))
     
@@ -88,11 +88,11 @@ assess_physical_access_processes() {
         2>/dev/null)
     
     if [[ -n "$policy_violations" ]]; then
-        add_check_result $OUTPUT_FILE "pass" "Organization policy enforcement" \
+        add_check_result "$OUTPUT_FILE" "pass" "Organization policy enforcement" \
             "Found organizational policies enforcing security controls in project $project_id"
         ((passed_checks++))
     else
-        add_check_result $OUTPUT_FILE "warning" "Organization policy enforcement" \
+        add_check_result "$OUTPUT_FILE" "warning" "Organization policy enforcement" \
             "No organization-level security policies found for project $project_id - consider implementing policy constraints"
         ((warning_checks++))
     fi
