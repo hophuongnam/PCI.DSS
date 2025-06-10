@@ -491,19 +491,19 @@ add_manual_verification_guidance() {
     
     add_section "$OUTPUT_FILE" "manual_verification" "Manual Verification Required" "Physical security controls requiring manual assessment"
     
-    add_check_result "$OUTPUT_FILE" "9.1 - Physical security policy" "info" \
+    add_check_result "$OUTPUT_FILE" "info" "9.1 - Physical security policy" \
         "Verify documented processes for restricting physical access to cardholder data environment"
     
-    add_check_result "$OUTPUT_FILE" "9.2.1 - Facility access controls" "info" \
+    add_check_result "$OUTPUT_FILE" "info" "9.2.1 - Facility access controls" \
         "Verify physical access controls at data center facilities used by cloud provider"
     
-    add_check_result "$OUTPUT_FILE" "9.2.2 - Network jack controls" "info" \
+    add_check_result "$OUTPUT_FILE" "info" "9.2.2 - Network jack controls" \
         "Verify controls for publicly accessible network jacks in office environments"
     
-    add_check_result "$OUTPUT_FILE" "9.3.1 - Personnel access procedures" "info" \
+    add_check_result "$OUTPUT_FILE" "info" "9.3.1 - Personnel access procedures" \
         "Verify procedures for authorizing physical access to sensitive areas"
     
-    add_check_result "$OUTPUT_FILE" "9.3.2 - Visitor authorization" "info" \
+    add_check_result "$OUTPUT_FILE" "info" "9.3.2 - Visitor authorization" \
         "Verify visitor authorization and escort procedures for sensitive areas"
     
     add_check_result "$OUTPUT_FILE" "info" "Physical data center security" \
