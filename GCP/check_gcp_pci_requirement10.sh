@@ -16,6 +16,12 @@ source "$LIB_DIR/gcp_html_report.sh" || exit 1
 # Script-specific variables
 REQUIREMENT_NUMBER="10"
 
+# Counters for checks  
+total_checks=0
+passed_checks=0
+warning_checks=0
+failed_checks=0
+
 
 # Function to show help
 show_help() {
@@ -85,10 +91,13 @@ assess_logging_processes() {
     if [[ -n "$logging_enabled" ]]; then
         add_check_result "$OUTPUT_FILE" "pass" "Cloud Logging enabled" \
             "Cloud Logging is enabled and operational in project $project_id"
+        ((passed_checks++))
     else
         add_check_result "$OUTPUT_FILE" "fail" "Cloud Logging enabled" \
             "Cloud Logging appears to be disabled or inaccessible in project $project_id"
+        ((failed_checks++))
     fi
+    ((total_checks++))
     
     # Check for audit log configuration
     local audit_logs
@@ -102,10 +111,13 @@ assess_logging_processes() {
         local audit_count=$(echo "$audit_logs" | wc -l)
         add_check_result "$OUTPUT_FILE" "pass" "Audit logs configuration" \
             "Found $audit_count audit log streams configured in project $project_id"
+        ((passed_checks++))
     else
         add_check_result "$OUTPUT_FILE" "fail" "Audit logs configuration" \
             "No audit logs found - critical for PCI DSS compliance"
+        ((failed_checks++))
     fi
+    ((total_checks++))
 }
 
 # 10.2 - Audit logs implementation
@@ -130,10 +142,13 @@ assess_audit_log_implementation() {
             ((configured_audits++))
             add_check_result "$OUTPUT_FILE" "pass" "Audit logging - $audit_type" \
                 "Audit logging for $audit_type is active"
+            ((passed_checks++))
         else
             add_check_result "$OUTPUT_FILE" "warning" "Audit logging - $audit_type" \
                 "No recent $audit_type audit logs found"
+            ((warning_checks++))
         fi
+        ((total_checks++))
     done
     
     # 10.2.1 - Individual user access to cardholder data
@@ -149,10 +164,13 @@ assess_audit_log_implementation() {
         local log_count=$(echo "$user_access_logs" | wc -l)
         add_check_result "$OUTPUT_FILE" "pass" "10.2.1 - User access logging" \
             "Found $log_count user access events logged"
+        ((passed_checks++))
     else
         add_check_result "$OUTPUT_FILE" "warning" "10.2.1 - User access logging" \
             "No recent user access logs found - verify if cardholder data access is occurring"
+        ((warning_checks++))
     fi
+    ((total_checks++))
     
     # 10.2.2 - Administrative access actions
     local admin_logs
@@ -184,10 +202,12 @@ assess_audit_log_implementation() {
     if [[ -n "$audit_access_logs" ]]; then
         add_check_result "$OUTPUT_FILE" "pass" "10.2.1.3 - Audit log access" \
             "Audit log access is being logged"
+        ((passed_checks++))
     else
         add_check_result "$OUTPUT_FILE" "info" "10.2.1.3 - Audit log access" \
             "No recent audit log access events found"
     fi
+    ((total_checks++))
     
     # 10.2.1.4 - Invalid logical access attempts
     local failed_auth_logs
@@ -201,10 +221,12 @@ assess_audit_log_implementation() {
     if [[ -n "$failed_auth_logs" ]]; then
         add_check_result "$OUTPUT_FILE" "pass" "10.2.1.4 - Failed access attempts" \
             "Failed access attempts are being logged"
+        ((passed_checks++))
     else
         add_check_result "$OUTPUT_FILE" "info" "10.2.1.4 - Failed access attempts" \
             "No recent failed access attempts logged"
     fi
+    ((total_checks++))
     
     # 10.2.1.5 - Changes to authentication credentials
     local credential_changes
@@ -308,10 +330,12 @@ assess_audit_log_protection() {
     if [[ -z "$log_sinks" ]]; then
         add_check_result "$OUTPUT_FILE" "warning" "10.3 - Log export/backup" \
             "No log sinks configured - consider exporting logs for backup and long-term retention"
+        ((warning_checks++))
     else
         local sink_count=$(echo "$log_sinks" | wc -l)
         add_check_result "$OUTPUT_FILE" "pass" "10.3.3 - Log backup" \
             "Found $sink_count log sinks configured for log export/backup"
+        ((passed_checks++))
         
         # Check sink destinations
         while IFS= read -r sink; do
@@ -323,16 +347,20 @@ assess_audit_log_protection() {
             if [[ "$destination" == storage.googleapis.com* ]]; then
                 add_check_result "$OUTPUT_FILE" "pass" "Log sink security" \
                     "Sink '$sink_name' exports to secure Cloud Storage"
+                ((passed_checks++))
             elif [[ "$destination" == bigquery.googleapis.com* ]]; then
                 add_check_result "$OUTPUT_FILE" "pass" "Log sink security" \
                     "Sink '$sink_name' exports to BigQuery for analysis"
+                ((passed_checks++))
             else
                 add_check_result "$OUTPUT_FILE" "info" "Log sink destination" \
                     "Sink '$sink_name' exports to: $destination"
             fi
+            ((total_checks++))
             
         done <<< "$log_sinks"
     fi
+    ((total_checks++))
     
     # 10.3.1 - Read access limitation
     local iam_policy
@@ -347,15 +375,20 @@ assess_audit_log_protection() {
         if [[ $logging_viewers -lt 10 ]]; then
             add_check_result "$OUTPUT_FILE" "pass" "10.3.1 - Log access restriction" \
                 "Limited number of users ($logging_viewers) have logging access"
+            ((passed_checks++))
         else
             add_check_result "$OUTPUT_FILE" "warning" "10.3.1 - Log access restriction" \
                 "High number of users ($logging_viewers) have logging access - review access controls"
+            ((warning_checks++))
         fi
+        ((total_checks++))
     fi
     
     # 10.3.2 - Protection from modification
     add_check_result "$OUTPUT_FILE" "pass" "10.3.2 - Log immutability" \
         "Cloud Logging provides built-in log immutability - logs cannot be modified after creation"
+    ((passed_checks++))
+    ((total_checks++))
     
     # 10.3.4 - File integrity monitoring
     local log_access_monitoring
@@ -735,11 +768,23 @@ main() {
     # Add manual verification guidance
     add_manual_verification_guidance
     
+    # Add summary metrics before finalizing
+    add_summary_metrics "$OUTPUT_FILE" "$total_checks" "$passed_checks" "$failed_checks" "$warning_checks"
+    
     # Generate final report
     finalize_report "$OUTPUT_FILE" "$REQUIREMENT_NUMBER"
     
-    print_status "PASS" "Assessment complete! Report saved to: $OUTPUT_FILE"
+    echo ""
+    print_status "PASS" "======================= ASSESSMENT SUMMARY ======================="
+    echo "Total checks performed: $total_checks"
+    echo "Passed checks: $passed_checks"
+    echo "Failed checks: $failed_checks"
+    echo "Warning checks: $warning_checks"
+    print_status "PASS" "=================================================================="
+    echo ""
+    print_status "INFO" "Report has been generated: $OUTPUT_FILE"
     print_status "INFO" "Projects assessed: $project_count"
+    print_status "PASS" "=================================================================="
     
     return 0
 }

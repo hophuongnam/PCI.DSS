@@ -16,6 +16,12 @@ source "$LIB_DIR/gcp_html_report.sh" || exit 1
 # Script-specific variables
 REQUIREMENT_NUMBER="11"
 
+# Counters for checks  
+total_checks=0
+passed_checks=0
+warning_checks=0
+failed_checks=0
+
 
 # Function to show help
 show_help() {
@@ -726,11 +732,23 @@ main() {
     # Add manual verification guidance
     add_manual_verification_guidance
     
+    # Add summary metrics before finalizing
+    add_summary_metrics "$OUTPUT_FILE" "$total_checks" "$passed_checks" "$failed_checks" "$warning_checks"
+    
     # Generate final report
     finalize_report "$OUTPUT_FILE" "$REQUIREMENT_NUMBER"
     
-    print_status "PASS" "Assessment complete! Report saved to: $OUTPUT_FILE"
+    echo ""
+    print_status "PASS" "======================= ASSESSMENT SUMMARY ======================="
+    echo "Total checks performed: $total_checks"
+    echo "Passed checks: $passed_checks"
+    echo "Failed checks: $failed_checks"
+    echo "Warning checks: $warning_checks"
+    print_status "PASS" "=================================================================="
+    echo ""
+    print_status "INFO" "Report has been generated: $OUTPUT_FILE"
     print_status "INFO" "Projects assessed: $project_count"
+    print_status "PASS" "=================================================================="
     
     return 0
 }

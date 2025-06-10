@@ -15,6 +15,12 @@ source "$LIB_DIR/gcp_html_report.sh" || exit 1
 # Script-specific variables
 REQUIREMENT_NUMBER="9"
 
+# Counters for checks  
+total_checks=0
+passed_checks=0
+warning_checks=0
+failed_checks=0
+
 
 # Function to show help
 show_help() {
@@ -66,10 +72,12 @@ assess_physical_access_processes() {
     # 9.1.1 - Security policies and operational procedures documentation
     add_check_result $OUTPUT_FILE "info" "9.1.1 - Security policies documentation" \
         "Verify documented security policies for Requirement 9 are maintained, up to date, in use, and known to affected parties"
+    ((total_checks++))
     
     # 9.1.2 - Roles and responsibilities documentation
     add_check_result $OUTPUT_FILE "info" "9.1.2 - Roles and responsibilities" \
         "Verify roles and responsibilities for Requirement 9 activities are documented, assigned, and understood"
+    ((total_checks++))
     
     # Check for any automated policy enforcement via Cloud Security Command Center or Organization Policy
     local policy_violations
@@ -82,10 +90,13 @@ assess_physical_access_processes() {
     if [[ -n "$policy_violations" ]]; then
         add_check_result $OUTPUT_FILE "pass" "Organization policy enforcement" \
             "Found organizational policies enforcing security controls in project $project_id"
+        ((passed_checks++))
     else
         add_check_result $OUTPUT_FILE "warning" "Organization policy enforcement" \
             "No organization-level security policies found for project $project_id - consider implementing policy constraints"
+        ((warning_checks++))
     fi
+    ((total_checks++))
     
     # Check for Security Command Center findings related to physical security
     local security_findings
@@ -99,10 +110,13 @@ assess_physical_access_processes() {
         local finding_count=$(echo "$security_findings" | wc -l)
         add_check_result "$OUTPUT_FILE" "Security Command Center findings" "warning" \
             "Found $finding_count active security findings for project $project_id - review for physical security implications"
+        ((warning_checks++))
     else
         add_check_result "$OUTPUT_FILE" "Security Command Center findings" "pass" \
             "No active security findings found for project $project_id"
+        ((passed_checks++))
     fi
+    ((total_checks++))
 }
 
 # 9.2 - Physical access controls (Cloud-native IAM and access controls)
@@ -164,12 +178,14 @@ assess_iam_access_controls() {
                 add_check_result "$OUTPUT_FILE" "Service account privilege check" "pass" \
                     "Service account '$email' follows principle of least privilege"
             fi
+            ((total_checks++))
         fi
         
     done <<< "$service_accounts"
     
     add_check_result "$OUTPUT_FILE" "Service account summary" "info" \
         "Found $total_accounts service accounts ($active_accounts active, $disabled_accounts disabled)"
+    ((total_checks++))
 }
 
 # 9.3 - Personnel access authorization (KMS key management as cryptographic access control)
@@ -578,11 +594,23 @@ main() {
     # Add manual verification guidance
     add_manual_verification_guidance
     
+    # Add summary metrics before finalizing
+    add_summary_metrics "$OUTPUT_FILE" "$total_checks" "$passed_checks" "$failed_checks" "$warning_checks"
+    
     # Generate final report
     finalize_report "$OUTPUT_FILE" "$REQUIREMENT_NUMBER"
     
-    print_status "PASS" "Assessment complete! Report saved to: $OUTPUT_FILE"
+    echo ""
+    print_status "PASS" "======================= ASSESSMENT SUMMARY ======================="
+    echo "Total checks performed: $total_checks"
+    echo "Passed checks: $passed_checks"
+    echo "Failed checks: $failed_checks"
+    echo "Warning checks: $warning_checks"
+    print_status "PASS" "=================================================================="
+    echo ""
+    print_status "INFO" "Report has been generated: $OUTPUT_FILE"
     print_status "INFO" "Projects assessed: $project_count"
+    print_status "PASS" "=================================================================="
     
     return 0
 }
