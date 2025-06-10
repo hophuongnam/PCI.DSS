@@ -496,6 +496,17 @@ add_check_result() {
         return 1
     fi
     
+    # Convert status to lowercase and handle common variations
+    check_status="${check_status,,}"  # Convert to lowercase
+    case "$check_status" in
+        "warn")
+            check_status="warning"
+            ;;
+        "manual")
+            check_status="warning"
+            ;;
+    esac
+    
     # Status validation
     case "$check_status" in
         "pass"|"fail"|"warning"|"info")
