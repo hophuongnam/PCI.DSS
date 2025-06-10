@@ -225,6 +225,7 @@ assess_mfa_implementation() {
     # Check for IAP (Identity-Aware Proxy) configuration
     local iap_check
     iap_check=$(gcloud iap web get-iam-policy 2>/dev/null | grep -c "members" 2>/dev/null || echo "0")
+    iap_check=$(echo "$iap_check" | tr -d '\n\r')
     
     if [[ "$iap_check" -gt 0 ]]; then
         add_check_result "$OUTPUT_FILE" "pass" "8.4.2 - Identity-Aware Proxy MFA" \
