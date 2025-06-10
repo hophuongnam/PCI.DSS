@@ -138,8 +138,10 @@ assess_role_based_access() {
     log_debug "Assessing role-based access control for project: $project_id"
     
     # 7.2.1 - Role-based access control implementation
-    add_check_result "7.2.1 - Role-based access control system" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "warning" "7.2.1 - Role-based access control system" \
         "Verify role-based access control is implemented and enforced across all system components"
+    ((total_checks++))
+    ((warning_checks++))
     
     # Check service account management and lifecycle
     local service_accounts
@@ -223,12 +225,16 @@ assess_access_control_systems() {
     log_debug "Assessing access control systems for project: $project_id"
     
     # 7.2.2 - Access is assigned based on job classification and function
-    add_check_result "7.2.2 - Job function-based access assignment" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "warning" "7.2.2 - Job function-based access assignment" \
         "Verify access is assigned to users based on job classification and function with documented approval"
+    ((total_checks++))
+    ((warning_checks++))
     
     # 7.2.3 - Default deny access control
-    add_check_result "7.2.3 - Default deny access control" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "warning" "7.2.3 - Default deny access control" \
         "Verify access control systems are configured with default-deny rule"
+    ((total_checks++))
+    ((warning_checks++))
     
     # Check VPC firewall rules for default-deny implementation
     local firewall_rules
@@ -290,12 +296,16 @@ assess_least_privilege() {
     log_debug "Assessing least privilege implementation for project: $project_id"
     
     # 7.2.4 - Least privilege access controls
-    add_check_result "7.2.4 - Least privilege implementation" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "warning" "7.2.4 - Least privilege implementation" \
         "Verify access control systems implement least privilege and limit access to the minimum required"
+    ((total_checks++))
+    ((warning_checks++))
     
     # 7.2.5 - Assignment of access rights and privileges
-    add_check_result "7.2.5 - Access rights assignment process" "MANUAL" \
+    add_check_result "$OUTPUT_FILE" "warning" "7.2.5 - Access rights assignment process" \
         "Verify all access rights and privileges are assigned based on individual personnel's job classification and function"
+    ((total_checks++))
+    ((warning_checks++))
     
     # Check for primitive roles usage (discouraged in favor of predefined/custom roles)
     local project_policy
@@ -426,6 +436,10 @@ main() {
     else
         assess_project "$PROJECT_ID"
     fi
+    
+    # Close the last section before adding summary
+    html_append "$OUTPUT_FILE" "            </div> <!-- Close final section content -->
+        </div> <!-- Close final section -->"
     
     # Add summary metrics before finalizing
     add_summary_metrics "$OUTPUT_FILE" "$total_checks" "$passed_checks" "$failed_checks" "$warning_checks"

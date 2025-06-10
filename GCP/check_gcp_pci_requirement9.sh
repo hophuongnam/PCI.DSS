@@ -108,11 +108,11 @@ assess_physical_access_processes() {
     
     if [[ -n "$security_findings" ]]; then
         local finding_count=$(echo "$security_findings" | wc -l)
-        add_check_result "$OUTPUT_FILE" "Security Command Center findings" "warning" \
+        add_check_result "$OUTPUT_FILE" "warning" "Security Command Center findings" \
             "Found $finding_count active security findings for project $project_id - review for physical security implications"
         ((warning_checks++))
     else
-        add_check_result "$OUTPUT_FILE" "Security Command Center findings" "pass" \
+        add_check_result "$OUTPUT_FILE" "pass" "Security Command Center findings" \
             "No active security findings found for project $project_id"
         ((passed_checks++))
     fi
@@ -132,7 +132,7 @@ assess_iam_access_controls() {
         2>/dev/null)
     
     if [[ -z "$service_accounts" ]]; then
-        add_check_result "$OUTPUT_FILE" "Service account assessment" "warning" "No service accounts found in project $project_id"
+        add_check_result "$OUTPUT_FILE" "warning" "Service account assessment" "No service accounts found in project $project_id"
         return
     fi
     
@@ -149,7 +149,7 @@ assess_iam_access_controls() {
         
         if [[ "$disabled" == "True" ]]; then
             ((disabled_accounts++))
-            add_check_result "$OUTPUT_FILE" "Disabled service account" "pass" \
+            add_check_result "$OUTPUT_FILE" "pass" "Disabled service account" \
                 "Service account '$email' is properly disabled"
         else
             ((active_accounts++))
@@ -172,10 +172,10 @@ assess_iam_access_controls() {
             done <<< "$roles"
             
             if [[ $high_risk_roles -gt 0 ]]; then
-                add_check_result "$OUTPUT_FILE" "High-risk service account" "fail" \
+                add_check_result "$OUTPUT_FILE" "fail" "High-risk service account" \
                     "Service account '$email' has $high_risk_roles high-privilege roles"
             else
-                add_check_result "$OUTPUT_FILE" "Service account privilege check" "pass" \
+                add_check_result "$OUTPUT_FILE" "pass" "Service account privilege check" \
                     "Service account '$email' follows principle of least privilege"
             fi
             ((total_checks++))
@@ -183,7 +183,7 @@ assess_iam_access_controls() {
         
     done <<< "$service_accounts"
     
-    add_check_result "$OUTPUT_FILE" "Service account summary" "info" \
+    add_check_result "$OUTPUT_FILE" "info" "Service account summary" \
         "Found $total_accounts service accounts ($active_accounts active, $disabled_accounts disabled)"
     ((total_checks++))
 }
@@ -215,7 +215,7 @@ assess_kms_key_security() {
     fi
     
     if [[ -z "$key_rings" ]]; then
-        add_check_result "$OUTPUT_FILE" "KMS assessment" "info" "No KMS key rings found in project $project_id"
+        add_check_result "$OUTPUT_FILE" "info" "KMS assessment" "No KMS key rings found in project $project_id"
         return
     fi
     
@@ -262,10 +262,10 @@ assess_kms_key_security() {
             
             if [[ $external_access -eq 0 ]]; then
                 ((secure_keys++))
-                add_check_result "$OUTPUT_FILE" "KMS key access control" "pass" \
+                add_check_result "$OUTPUT_FILE" "pass" "KMS key access control" \
                     "Key '$(basename "$key_name")' has proper access restrictions"
             else
-                add_check_result "$OUTPUT_FILE" "KMS key security issue" "fail" \
+                add_check_result "$OUTPUT_FILE" "fail" "KMS key security issue" \
                     "Key '$(basename "$key_name")' allows external access ($external_access violations)"
             fi
             
@@ -275,7 +275,7 @@ assess_kms_key_security() {
     
     if [[ $total_keys -gt 0 ]]; then
         local security_percentage=$((secure_keys * 100 / total_keys))
-        add_check_result "$OUTPUT_FILE" "KMS security summary" "info" \
+        add_check_result "$OUTPUT_FILE" "info" "KMS security summary" \
             "$secure_keys out of $total_keys keys properly secured ($security_percentage%)"
     fi
 }
@@ -293,7 +293,7 @@ assess_storage_media_security() {
         2>/dev/null)
     
     if [[ -z "$buckets" ]]; then
-        add_check_result "$OUTPUT_FILE" "Storage assessment" "info" "No storage buckets found in project $project_id"
+        add_check_result "$OUTPUT_FILE" "info" "Storage assessment" "No storage buckets found in project $project_id"
         return
     fi
     
@@ -314,10 +314,10 @@ assess_storage_media_security() {
         
         if [[ -n "$encryption_info" ]]; then
             ((encrypted_buckets++))
-            add_check_result "$OUTPUT_FILE" "Storage encryption" "pass" \
+            add_check_result "$OUTPUT_FILE" "pass" "Storage encryption" \
                 "Bucket '$bucket' uses customer-managed encryption"
         else
-            add_check_result "$OUTPUT_FILE" "Storage encryption" "warning" \
+            add_check_result "$OUTPUT_FILE" "warning" "Storage encryption" \
                 "Bucket '$bucket' uses Google-managed encryption (consider CMEK)"
         fi
         
@@ -329,10 +329,10 @@ assess_storage_media_security() {
         
         if [[ -n "$lifecycle_policy" ]]; then
             ((lifecycle_buckets++))
-            add_check_result "$OUTPUT_FILE" "Storage lifecycle policy" "pass" \
+            add_check_result "$OUTPUT_FILE" "pass" "Storage lifecycle policy" \
                 "Bucket '$bucket' has lifecycle policies configured"
         else
-            add_check_result "$OUTPUT_FILE" "Storage lifecycle policy" "warning" \
+            add_check_result "$OUTPUT_FILE" "warning" "Storage lifecycle policy" \
                 "Bucket '$bucket' lacks lifecycle policies for data retention"
         fi
         
@@ -343,18 +343,18 @@ assess_storage_media_security() {
             2>/dev/null)
         
         if [[ "$public_access" == "enforced" ]]; then
-            add_check_result "$OUTPUT_FILE" "Storage public access" "pass" \
+            add_check_result "$OUTPUT_FILE" "pass" "Storage public access" \
                 "Bucket '$bucket' has public access prevention enforced"
         else
             ((public_buckets++))
-            add_check_result "$OUTPUT_FILE" "Storage public access" "fail" \
+            add_check_result "$OUTPUT_FILE" "fail" "Storage public access" \
                 "Bucket '$bucket' allows public access - security risk"
         fi
         
     done <<< "$buckets"
     
     # Summary assessment
-    add_check_result "$OUTPUT_FILE" "Storage security summary" "info" \
+    add_check_result "$OUTPUT_FILE" "info" "Storage security summary" \
         "Buckets: $total_buckets total, $encrypted_buckets with CMEK, $lifecycle_buckets with lifecycle, $public_buckets allow public access"
 }
 
@@ -372,7 +372,7 @@ assess_asset_inventory() {
         2>/dev/null)
     
     if [[ -z "$assets" ]]; then
-        add_check_result "$OUTPUT_FILE" "Asset inventory" "warning" "No assets found in inventory for project $project_id"
+        add_check_result "$OUTPUT_FILE" "warning" "Asset inventory" "No assets found in inventory for project $project_id"
         return
     fi
     
@@ -403,7 +403,7 @@ assess_asset_inventory() {
         
     done <<< "$assets"
     
-    add_check_result "$OUTPUT_FILE" "Asset inventory summary" "pass" \
+    add_check_result "$OUTPUT_FILE" "pass" "Asset inventory summary" \
         "Cloud Asset Inventory tracking $total_assets assets: $compute_instances instances, $storage_buckets buckets, $kms_keys keys"
     
     # Check for logging of asset changes
@@ -416,10 +416,10 @@ assess_asset_inventory() {
         2>/dev/null)
     
     if [[ -n "$audit_logs" ]]; then
-        add_check_result "$OUTPUT_FILE" "Asset inventory logging" "pass" \
+        add_check_result "$OUTPUT_FILE" "pass" "Asset inventory logging" \
             "Cloud Asset Inventory changes are being logged"
     else
-        add_check_result "$OUTPUT_FILE" "Asset inventory logging" "warning" \
+        add_check_result "$OUTPUT_FILE" "warning" "Asset inventory logging" \
             "No recent Cloud Asset Inventory audit logs found"
     fi
 }
@@ -437,7 +437,7 @@ assess_iot_device_security() {
         2>/dev/null)
     
     if [[ -z "$iot_registries" ]]; then
-        add_check_result "$OUTPUT_FILE" "IoT device assessment" "info" "No IoT Core registries found - POI device controls not applicable"
+        add_check_result "$OUTPUT_FILE" "info" "IoT device assessment" "No IoT Core registries found - POI device controls not applicable"
         return
     fi
     
@@ -468,10 +468,10 @@ assess_iot_device_security() {
             
             if [[ "$blocked" == "false" ]]; then
                 ((secure_devices++))
-                add_check_result "$OUTPUT_FILE" "IoT device status" "pass" \
+                add_check_result "$OUTPUT_FILE" "pass" "IoT device status" \
                     "Device '$device_id' is active and properly managed"
             else
-                add_check_result "$OUTPUT_FILE" "IoT device blocked" "warning" \
+                add_check_result "$OUTPUT_FILE" "warning" "IoT device blocked" \
                     "Device '$device_id' is blocked - verify if intentional"
             fi
             
@@ -480,7 +480,7 @@ assess_iot_device_security() {
     done <<< "$iot_registries"
     
     if [[ $total_devices -gt 0 ]]; then
-        add_check_result "$OUTPUT_FILE" "IoT device summary" "info" \
+        add_check_result "$OUTPUT_FILE" "info" "IoT device summary" \
             "Found $total_devices IoT devices ($secure_devices active, $((total_devices - secure_devices)) blocked)"
     fi
 }
@@ -506,7 +506,7 @@ add_manual_verification_guidance() {
     add_check_result "$OUTPUT_FILE" "9.3.2 - Visitor authorization" "info" \
         "Verify visitor authorization and escort procedures for sensitive areas"
     
-    add_check_result "$OUTPUT_FILE" "Physical data center security" "info" \
+    add_check_result "$OUTPUT_FILE" "info" "Physical data center security" \
         "Review Google Cloud's SOC 2 Type II and ISO 27001 certifications for data center physical security"
 }
 
@@ -593,6 +593,10 @@ main() {
     
     # Add manual verification guidance
     add_manual_verification_guidance
+    
+    # Close the last section before adding summary
+    html_append "$OUTPUT_FILE" "            </div> <!-- Close final section content -->
+        </div> <!-- Close final section -->"
     
     # Add summary metrics before finalizing
     add_summary_metrics "$OUTPUT_FILE" "$total_checks" "$passed_checks" "$failed_checks" "$warning_checks"
