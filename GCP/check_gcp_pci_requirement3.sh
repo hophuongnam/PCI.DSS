@@ -277,6 +277,10 @@ main() {
         print_status "WARN" "Key management assessment encountered issues"
     fi
     
+    # Close the last section before adding summary
+    html_append "$OUTPUT_FILE" "            </div> <!-- Close final section content -->
+        </div> <!-- Close final section -->"
+    
     # Add summary metrics before finalizing
     add_summary_metrics "$OUTPUT_FILE" "$total_checks" "$passed_checks" "$failed_checks" "$warning_checks"
     
